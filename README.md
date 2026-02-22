@@ -10,9 +10,9 @@
 
 ---
 
-Goose is a personal autonomous agent powered by a local Ollama LLM. It reasons step by step, uses tools (web search, file I/O, shell commands), and asks for your approval before executing anything risky — all without sending your data to the cloud.
+Goose is a personal autonomous agent powered by a local Ollama LLM. It reasons step by step, uses tools (web search, file I/O, shell commands), and asks for your approval before executing anything risky, all without sending your data to the cloud.
 
-Whether it's searching the web, running shell commands, or navigating your file system, Goose executes with precision and checks in before anything risky — just like any good wingman would. Every mission runs on your own hardware: no data leaves your network, no cloud sees your prompts, and no subscription stands between you and the objective.
+Whether it's searching the web, running shell commands, or navigating your file system, Goose executes with precision and checks in before anything risky, just like any good wingman would. Every mission runs on your own hardware: no data leaves your network, no cloud sees your prompts, and no subscription stands between you and the objective.
 
 **Slack is the current interface.** Goose is not a Slack bot — it's an agent that happens to be reachable through Slack right now. Other interfaces (CLI, HTTP API, etc.) can be added without touching the agent core.
 
