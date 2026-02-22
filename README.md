@@ -1,6 +1,18 @@
-# Goose 🪿
+# Goose
+
+<p align="center">
+  <img src="docs/assets/goose.png" alt="Goose" width="200"/>
+</p>
+
+<p align="center">
+  <em>"Talk to me, Goose." — Your personal AI wingman. Local LLM, no cloud, fully yours.</em>
+</p>
+
+---
 
 Goose is a personal autonomous agent powered by a local Ollama LLM. It reasons step by step, uses tools (web search, file I/O, shell commands), and asks for your approval before executing anything risky — all without sending your data to the cloud.
+
+Whether it's searching the web, running shell commands, or navigating your file system, Goose executes with precision and checks in before anything risky — just like any good wingman would. Every mission runs on your own hardware: no data leaves your network, no cloud sees your prompts, and no subscription stands between you and the objective.
 
 **Slack is the current interface.** Goose is not a Slack bot — it's an agent that happens to be reachable through Slack right now. Other interfaces (CLI, HTTP API, etc.) can be added without touching the agent core.
 
@@ -24,14 +36,14 @@ goose/
     interfaces/
       slack/            ← one way to talk to Goose
         bot.js
-        commands.js     ← /agent slash command
+        commands.js     ← /goose slash command
         messages.js     ← DM handler
         interactions.js ← Approve/Deny buttons
     config.js
     index.js            ← entry point (currently starts Slack interface)
 ```
 
-The agent core (`src/agent/`, `src/tools/`) has zero dependencies on any interface. Adding a new interface means adding a new folder under `src/interfaces/` and calling `runAgent()`.
+The agent core (`src/goose/`, `src/tools/`) has zero dependencies on any interface. Adding a new interface means adding a new folder under `src/interfaces/` and calling `runAgent()`.
 
 ---
 
@@ -84,24 +96,24 @@ See **[docs/slack-setup.md](docs/slack-setup.md)** for the full step-by-step gui
 ## Usage Examples
 
 ```
-/agent help
+/goose help
 ```
 Shows the live tool list — always up to date, no docs required.
 
 ```
-/agent what time is it?
+/goose what time is it?
 ```
 ```
-/agent search the web for the latest news on Anthropic
+/goose search the web for the latest news on Anthropic
 ```
 ```
-/agent run the command: df -h
+/goose run the command: df -h
 ```
 ```
-/agent read the file /Users/me/notes.txt and summarise it
+/goose read the file /Users/me/notes.txt and summarise it
 ```
 ```
-/agent list the files in /Users/me/Downloads
+/goose list the files in /Users/me/Downloads
 ```
 
 You can also DM Goose directly for a more conversational experience. Type `clear memory` in a DM to reset conversation history.
@@ -163,11 +175,11 @@ That's it — the agent loop and Ollama tool definitions pick it up automaticall
 
 Create `src/interfaces/<name>/` and implement an entry point that:
 1. Receives input from the user
-2. Calls `runAgent(task, contextId, { onToolCall, onToolResult })` from `src/agent/loop.js`
+2. Calls `runAgent(task, contextId, { onToolCall, onToolResult })` from `src/goose/loop.js`
 3. Sends the returned string back to the user
-4. Handles the approval flow via `createApproval()` / `resolveApproval()` from `src/agent/approvals.js`
+4. Handles the approval flow via `createApproval()` / `resolveApproval()` from `src/goose/approvals.js`
 
-No changes to `src/agent/` or `src/tools/` required.
+No changes to `src/goose/` or `src/tools/` required.
 
 ---
 

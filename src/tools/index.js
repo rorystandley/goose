@@ -35,7 +35,7 @@ const RISK_LABEL = { safe: 'safe', moderate: 'moderate', dangerous: 'dangerous �
 
 /**
  * Build Slack Block Kit blocks listing all registered tools.
- * Called by the /agent help command — always reflects the live tool registry.
+ * Called by the /goose help command — always reflects the live tool registry.
  */
 export function buildHelpBlocks() {
   const blocks = [
@@ -45,7 +45,7 @@ export function buildHelpBlocks() {
     },
     {
       type: 'context',
-      elements: [{ type: 'mrkdwn', text: `${tools.length} tools registered · Use \`/agent <task>\` to give Goose anything to do` }],
+      elements: [{ type: 'mrkdwn', text: `${tools.length} tools registered · Use \`/goose <task>\` to give Goose anything to do` }],
     },
     { type: 'divider' },
   ];

@@ -7,11 +7,11 @@ import { createLogger } from '../../logger.js';
 const log = createLogger('slack/command');
 
 /**
- * Register the /agent slash command handler.
+ * Register the /goose slash command handler.
  * @param {import('@slack/bolt').App} app
  */
 export function registerCommandHandlers(app) {
-  app.command('/agent', async ({ command, ack, client }) => {
+  app.command('/goose', async ({ command, ack, client }) => {
     // Must ack within 3 seconds
     await ack();
 
