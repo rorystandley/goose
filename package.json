@@ -1,0 +1,17 @@
+{
+  "name": "goose",
+  "version": "1.0.0",
+  "description": "Goose — a personal autonomous Slack agent powered by local Ollama LLM",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.19.0",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2",
+    "ollama": "^0.5.9",
+    "zod": "^3.23.8"
+  }
+}
