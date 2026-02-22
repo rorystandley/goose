@@ -1,32 +1,34 @@
 import config from './config.js';
 import { app } from './interfaces/slack/bot.js';
+import { log } from './logger.js';
 
-console.log(`
-  Agent name : ${config.AGENT_NAME}
-  Model      : ${config.OLLAMA_MODEL}
-  Ollama host: ${config.OLLAMA_HOST}
-  Approval   : ${config.REQUIRE_APPROVAL ? 'required for dangerous tools' : 'disabled'}
-`);
+log.info('Starting', {
+  agent: config.AGENT_NAME,
+  model: config.OLLAMA_MODEL,
+  ollamaHost: config.OLLAMA_HOST,
+  approval: config.REQUIRE_APPROVAL ? 'required for dangerous tools' : 'disabled',
+  logLevel: process.env.LOG_LEVEL ?? 'info',
+});
 
 (async () => {
   try {
     await app.start();
-    console.log(`✅ ${config.AGENT_NAME} is online and listening in Slack.`);
+    log.info('Online — listening via Slack Socket Mode');
   } catch (err) {
-    console.error('Failed to start the Slack app:', err);
+    log.error('Failed to start', { error: err.message });
     process.exit(1);
   }
 })();
 
 // Graceful shutdown
 async function shutdown(signal) {
-  console.log(`\nReceived ${signal} — shutting down ${config.AGENT_NAME}...`);
+  log.info('Shutting down', { signal });
   try {
     await app.stop();
-    console.log('Goodbye.');
+    log.info('Goodbye');
   } catch (_) {}
   process.exit(0);
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGINT',  () => shutdown('SIGINT'));

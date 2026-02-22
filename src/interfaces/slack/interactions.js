@@ -1,4 +1,7 @@
 import { resolveApproval, hasPending } from '../../agent/approvals.js';
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('slack/interactions');
 
 /**
  * Register button interaction handlers for approve/deny.
@@ -11,10 +14,11 @@ export function registerInteractionHandlers(app) {
 
     const approvalId = body.actions[0].value;
     if (!hasPending(approvalId)) {
-      // Already resolved (e.g. timed out)
+      log.warn('Approve clicked for unknown/expired approval', { approvalId, user: body.user.id });
       return;
     }
 
+    log.info('Tool approved', { approvalId, user: body.user.id });
     resolveApproval(approvalId, true);
 
     // Update the approval message to replace buttons with a status line
@@ -48,9 +52,11 @@ export function registerInteractionHandlers(app) {
 
     const approvalId = body.actions[0].value;
     if (!hasPending(approvalId)) {
+      log.warn('Deny clicked for unknown/expired approval', { approvalId, user: body.user.id });
       return;
     }
 
+    log.info('Tool denied', { approvalId, user: body.user.id });
     resolveApproval(approvalId, false);
 
     try {

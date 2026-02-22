@@ -1,6 +1,9 @@
 import { randomUUID } from 'crypto';
+import { createLogger } from '../logger.js';
 
-// In-memory map of pending approvals: id → { resolve, timeoutId }
+const log = createLogger('approval');
+
+// In-memory map of pending approvals: id → { resolve, timeoutId, tool, args }
 const pendingApprovals = new Map();
 
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -12,12 +15,14 @@ const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 export function createApproval({ tool, args }) {
   const id = randomUUID();
 
+  log.info('Approval created', { id, tool, args });
+
   const promise = new Promise((resolve) => {
     // Auto-deny after 5 minutes if no response
     const timeoutId = setTimeout(() => {
       if (pendingApprovals.has(id)) {
         pendingApprovals.delete(id);
-        console.warn(`Approval ${id} for tool "${tool}" timed out after 5 minutes — auto-denied.`);
+        log.warn('Approval timed out — auto-denied', { id, tool });
         resolve(false);
       }
     }, APPROVAL_TIMEOUT_MS);
@@ -35,11 +40,12 @@ export function createApproval({ tool, args }) {
 export function resolveApproval(id, approved) {
   const entry = pendingApprovals.get(id);
   if (!entry) {
-    console.warn(`resolveApproval called with unknown or already-resolved id: ${id}`);
+    log.warn('resolveApproval called for unknown or already-resolved id', { id });
     return;
   }
   clearTimeout(entry.timeoutId);
   pendingApprovals.delete(id);
+  log.info('Approval resolved', { id, tool: entry.tool, approved });
   entry.resolve(approved);
 }
 

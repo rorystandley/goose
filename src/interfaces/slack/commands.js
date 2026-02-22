@@ -2,6 +2,9 @@ import config from '../../config.js';
 import { runAgent } from '../../agent/loop.js';
 import { createApproval } from '../../agent/approvals.js';
 import { buildHelpBlocks } from '../../tools/index.js';
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('slack/command');
 
 /**
  * Register the /agent slash command handler.
@@ -16,6 +19,7 @@ export function registerCommandHandlers(app) {
 
     // Help command — dynamically generated from the live tool registry
     if (!task || /^(help|tools|\?)$/i.test(task)) {
+      log.info('Help requested', { user: command.user_id, channel: command.channel_id });
       await client.chat.postMessage({
         channel: command.channel_id,
         blocks: buildHelpBlocks(),
@@ -23,6 +27,8 @@ export function registerCommandHandlers(app) {
       });
       return;
     }
+
+    log.info('Command received', { user: command.user_id, channel: command.channel_id, task: task.slice(0, 120) });
 
     // Post initial "thinking" message and capture its ts for later update
     let thinkingTs;
@@ -33,7 +39,7 @@ export function registerCommandHandlers(app) {
       });
       thinkingTs = thinking.ts;
     } catch (err) {
-      console.error('Failed to post thinking message:', err.message);
+      log.error('Failed to post thinking message', { error: err.message });
     }
 
     const toolLog = [];
@@ -45,6 +51,8 @@ export function registerCommandHandlers(app) {
 
           // Post an approval request in thread
           const { id: approvalId, promise } = createApproval({ tool: toolName, args });
+
+          log.info('Approval prompt posted', { tool: toolName, approvalId, channel: command.channel_id });
 
           await client.chat.postMessage({
             channel: command.channel_id,
@@ -102,8 +110,10 @@ export function registerCommandHandlers(app) {
           text: `✅ *${config.AGENT_NAME} completed:* ${task}`,
         });
       }
+
+      log.info('Command response posted', { channel: command.channel_id });
     } catch (err) {
-      console.error('Agent error:', err);
+      log.error('Agent error in command handler', { error: err.message, stack: err.stack });
       await client.chat.postMessage({
         channel: command.channel_id,
         thread_ts: thinkingTs,

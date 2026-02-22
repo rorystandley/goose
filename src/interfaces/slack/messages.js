@@ -2,6 +2,9 @@ import config from '../../config.js';
 import { runAgent } from '../../agent/loop.js';
 import { createApproval } from '../../agent/approvals.js';
 import { clearHistory } from '../../agent/memory.js';
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('slack/dm');
 
 /**
  * Register DM message handler.
@@ -23,6 +26,7 @@ export function registerMessageHandlers(app) {
 
     // Special command: clear conversation memory
     if (/^clear\s+memory$/i.test(text)) {
+      log.info('Memory clear requested', { user: message.user });
       clearHistory(message.user);
       await client.chat.postMessage({
         channel: message.channel,
@@ -30,6 +34,8 @@ export function registerMessageHandlers(app) {
       });
       return;
     }
+
+    log.info('DM received', { user: message.user, text: text.slice(0, 120) });
 
     // Post a typing indicator
     let thinkingTs;
@@ -40,7 +46,7 @@ export function registerMessageHandlers(app) {
       });
       thinkingTs = thinking.ts;
     } catch (err) {
-      console.error('Failed to post thinking message:', err.message);
+      log.error('Failed to post thinking message', { error: err.message });
     }
 
     try {
@@ -50,6 +56,8 @@ export function registerMessageHandlers(app) {
 
           // Post approval request in the DM
           const { id: approvalId, promise } = createApproval({ tool: toolName, args });
+
+          log.info('Approval prompt posted', { tool: toolName, approvalId, user: message.user });
 
           await client.chat.postMessage({
             channel: message.channel,
@@ -102,8 +110,10 @@ export function registerMessageHandlers(app) {
         channel: message.channel,
         text: result,
       });
+
+      log.info('DM response posted', { user: message.user });
     } catch (err) {
-      console.error('Agent error (DM):', err);
+      log.error('Agent error in DM handler', { error: err.message, stack: err.stack });
       if (thinkingTs) {
         try {
           await client.chat.delete({ channel: message.channel, ts: thinkingTs });

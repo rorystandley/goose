@@ -1,3 +1,7 @@
+import { createLogger } from '../logger.js';
+
+const log = createLogger('memory');
+
 const MAX_MESSAGES = 20;
 
 // In-memory store: contextId (channelId or userId) → message array
@@ -8,7 +12,9 @@ const histories = new Map();
  * Returns an empty array if no history exists yet.
  */
 export function getHistory(contextId) {
-  return histories.get(contextId) ?? [];
+  const history = histories.get(contextId) ?? [];
+  log.debug('History read', { contextId, messages: history.length });
+  return history;
 }
 
 /**
@@ -25,11 +31,14 @@ export function addMessage(contextId, message) {
   if (history.length > MAX_MESSAGES) {
     history.shift();
   }
+  log.debug('Message added', { contextId, role: message.role, historyLength: history.length });
 }
 
 /**
  * Clear all conversation history for a context.
  */
 export function clearHistory(contextId) {
+  const had = histories.has(contextId);
   histories.delete(contextId);
+  log.info('History cleared', { contextId, hadHistory: had });
 }
