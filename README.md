@@ -53,6 +53,7 @@ The agent core (`src/goose/`, `src/tools/`) has zero dependencies on any interfa
 |---|---|
 | [docs/slack-setup.md](docs/slack-setup.md) | Step-by-step Slack app setup |
 | [docs/tools.md](docs/tools.md) | All tools, parameters, risk levels, and search provider setup |
+| [docs/roadmap.md](docs/roadmap.md) | 10 planned features — what's next for Goose |
 
 ---
 
@@ -78,7 +79,7 @@ npm start
 npm run dev
 ```
 
-Connects via WebSocket — no public URL or ngrok needed.
+Connects via WebSocket, no public URL or ngrok needed.
 
 ---
 
@@ -87,7 +88,7 @@ Connects via WebSocket — no public URL or ngrok needed.
 See **[docs/slack-setup.md](docs/slack-setup.md)** for the full step-by-step guide, including:
 - Creating the app and enabling Socket Mode
 - Required bot scopes and event subscriptions
-- Enabling DMs (Messages Tab — easy to miss!)
+- Enabling DMs (Messages Tab is easy to miss!)
 - Filling in `.env`
 - Verification checklist and troubleshooting
 
@@ -98,7 +99,7 @@ See **[docs/slack-setup.md](docs/slack-setup.md)** for the full step-by-step gui
 ```
 /goose help
 ```
-Shows the live tool list — always up to date, no docs required.
+Shows the live tool list, always up to date, no docs required.
 
 ```
 /goose what time is it?
