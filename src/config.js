@@ -21,6 +21,7 @@ const config = Object.freeze({
   AGENT_NAME: process.env.AGENT_NAME || 'Goose',
   MAX_TOOL_ITERATIONS: parseInt(process.env.MAX_TOOL_ITERATIONS || '10', 10),
   REQUIRE_APPROVAL: process.env.REQUIRE_APPROVAL !== 'false',
+  MEMORY_DB_PATH: process.env.MEMORY_DB_PATH || '../../data/memory.db',
   ALLOWED_PATHS: (process.env.ALLOWED_PATHS || '/Users').split(',').map(p => p.trim()),
   // Search providers — add whichever key(s) you have; first configured one is used
   BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY || '',

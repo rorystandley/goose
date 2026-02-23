@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@slack/bolt": "^3.19.0",
+    "better-sqlite3": "^12.6.2",
     "dotenv": "^16.4.5",
     "node-fetch": "^3.3.2",
     "ollama": "^0.5.9",

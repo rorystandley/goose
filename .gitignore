@@ -11,6 +11,9 @@ node_modules/
 logs/
 npm-debug.log*
 
+# SQLite memory database
+data/
+
 # macOS
 .DS_Store
 
