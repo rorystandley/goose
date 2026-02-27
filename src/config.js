@@ -1,0 +1,48 @@
+import 'dotenv/config';
+import path from 'path';
+
+const required = [
+  'SLACK_BOT_TOKEN',
+  'SLACK_APP_TOKEN',
+  'SLACK_SIGNING_SECRET',
+];
+
+for (const key of required) {
+  if (!process.env[key]) {
+    throw new Error(`Missing required environment variable: ${key}. Check your .env file.`);
+  }
+}
+
+const config = Object.freeze({
+  SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
+  SLACK_APP_TOKEN: process.env.SLACK_APP_TOKEN,
+  SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
+  OLLAMA_HOST: process.env.OLLAMA_HOST || 'http://localhost:11434',
+  OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'qwen2.5:14b',
+  AGENT_NAME: process.env.AGENT_NAME || 'Goose',
+  MAX_TOOL_ITERATIONS: parseInt(process.env.MAX_TOOL_ITERATIONS || '10', 10),
+  REQUIRE_APPROVAL: process.env.REQUIRE_APPROVAL !== 'false',
+  ALLOWED_PATHS: (process.env.ALLOWED_PATHS || '/Users').split(',').map(p => p.trim()),
+  MEMORY_PATH: process.env.MEMORY_PATH || path.join(process.cwd(), 'data', 'memory.json'),
+  MISSIONS_PATH: process.env.MISSIONS_PATH || path.join(process.cwd(), 'data', 'missions.json'),
+  SCHEDULER_ALLOW_DANGEROUS: process.env.SCHEDULER_ALLOW_DANGEROUS === 'true',
+  THOUGHTS_PATH: process.env.THOUGHTS_PATH || path.join(process.cwd(), 'data', 'thoughts.jsonl'),
+  FACTS_PATH: process.env.FACTS_PATH || path.join(process.cwd(), 'data', 'facts.json'),
+  PLUGINS_DIR: process.env.PLUGINS_DIR || path.join(process.cwd(), 'plugins'),
+  MONITORS_PATH: process.env.MONITORS_PATH || path.join(process.cwd(), 'data', 'monitors.json'),
+  MONITORS_ALLOW_DANGEROUS: process.env.MONITORS_ALLOW_DANGEROUS === 'true',
+  WEB_ENABLED: process.env.WEB_ENABLED === 'true',
+  WEB_PORT: parseInt(process.env.WEB_PORT || '3000', 10),
+  // Multi-model routing — leave empty to always use OLLAMA_MODEL
+  FAST_MODEL:    process.env.FAST_MODEL    || '',
+  SMART_MODEL:   process.env.SMART_MODEL   || '',
+  ROUTING_MODEL: process.env.ROUTING_MODEL || '',
+  // Voice interface — requires: brew install sox whisper-cpp
+  VOICE_WHISPER_MODEL: process.env.VOICE_WHISPER_MODEL || 'base.en',
+  // Search providers — add whichever key(s) you have; first configured one is used
+  BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY || '',
+  SERPER_API_KEY: process.env.SERPER_API_KEY || '',
+  TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+});
+
+export default config;

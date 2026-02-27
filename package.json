@@ -1,0 +1,33 @@
+{
+  "name": "goose",
+  "version": "1.0.0",
+  "description": "Goose — a personal autonomous Slack agent powered by local Ollama LLM",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "cli": "node src/cli.js",
+    "web": "WEB_ENABLED=true node src/cli.js",
+    "dev:web": "WEB_ENABLED=true node --watch src/cli.js",
+    "voice": "node src/voice.js",
+    "dev:voice": "node --watch src/voice.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.19.0",
+    "dotenv": "^16.4.5",
+    "node-cron": "^4.2.1",
+    "node-fetch": "^3.3.2",
+    "ollama": "^0.6.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
+    "vitest": "^2.1.8"
+  },
+  "overrides": {
+    "@slack/socket-mode": "^2.0.5"
+  }
+}

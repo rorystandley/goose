@@ -1,0 +1,22 @@
+{
+  "missions": [
+    {
+      "name": "morning-briefing",
+      "cron": "0 8 * * MON-FRI",
+      "task": "Check the current weather for YOUR_CITY, then give a brief morning summary: today's date, the weather, and one interesting news headline.",
+      "contextId": "mission-morning-briefing",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "timezone": "UTC",
+      "enabled": false
+    },
+    {
+      "name": "disk-check",
+      "cron": "0 9 * * MON",
+      "task": "Run the command: df -h and summarise disk usage. Warn if any volume is over 80% full.",
+      "contextId": "mission-disk-check",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "timezone": "UTC",
+      "enabled": false
+    }
+  ]
+}

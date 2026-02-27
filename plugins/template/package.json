@@ -1,0 +1,9 @@
+{
+  "name": "@goose-tools/your-plugin-name",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "What this plugin does",
+  "exports": "./index.js",
+  "keywords": ["goose", "goose-tools"],
+  "license": "MIT"
+}

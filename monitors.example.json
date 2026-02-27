@@ -1,0 +1,50 @@
+{
+  "monitors": [
+    {
+      "name": "server-health",
+      "type": "url",
+      "url": "https://example.com/health",
+      "interval": "5m",
+      "cooldown": "10m",
+      "task": "The URL {url} returned {status}. Is this expected? Summarise the situation and check if this is a known issue.",
+      "contextId": "monitor-server-health",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "enabled": false
+    },
+    {
+      "name": "config-watch",
+      "type": "file",
+      "path": "path/to/watched/file.json",
+      "interval": "1m",
+      "cooldown": "5m",
+      "task": "The file {path} has changed (last modified: {mtime}). Read it and summarise what is different from what you remember.",
+      "contextId": "monitor-config-watch",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "enabled": false
+    },
+    {
+      "name": "high-cpu",
+      "type": "system",
+      "metric": "cpu",
+      "threshold": 85,
+      "interval": "10m",
+      "cooldown": "15m",
+      "task": "CPU usage has reached {value}% — above the {threshold}% threshold. What process might be causing this? Use run_command to investigate if needed.",
+      "contextId": "monitor-high-cpu",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "enabled": false
+    },
+    {
+      "name": "high-memory",
+      "type": "system",
+      "metric": "memory",
+      "threshold": 90,
+      "interval": "10m",
+      "cooldown": "15m",
+      "task": "Memory usage has reached {value}% — above the {threshold}% threshold. Summarise the situation and suggest any immediate actions.",
+      "contextId": "monitor-high-memory",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "enabled": false
+    }
+  ]
+}
