@@ -93,7 +93,7 @@ Goose auto-discovers npm packages matching either pattern in `node_modules`:
 
 | Pattern | Example |
 |---|---|
-| `@goose-tools/*` | `@goose-tools/architecture` |
+| `@goose-plugins/*` | `@goose-plugins/twitter` |
 | `goose-plugin-*` | `goose-plugin-github` |
 
 No config required — install (or link) the package and restart.
@@ -111,7 +111,7 @@ my-plugin/
 
 ```json
 {
-  "name": "@goose-tools/my-plugin",
+  "name": "@goose-plugins/my-plugin",
   "version": "1.0.0",
   "type": "module",
   "description": "What this plugin does",
@@ -119,7 +119,7 @@ my-plugin/
     ".": "./index.js",
     "./store.js": "./store.js"
   },
-  "keywords": ["goose", "goose-tools"],
+  "keywords": ["goose", "goose-plugins"],
   "license": "MIT"
 }
 ```
@@ -137,7 +137,7 @@ npm link
 
 # 2. In the goose directory — symlink it into node_modules
 cd path/to/goose
-npm link @goose-tools/my-plugin
+npm link @goose-plugins/my-plugin
 
 # 3. Restart Goose — auto-discovered via naming convention
 node src/cli.js
@@ -147,7 +147,7 @@ To remove the link:
 
 ```bash
 cd path/to/goose
-npm unlink @goose-tools/my-plugin
+npm unlink @goose-plugins/my-plugin
 ```
 
 > **Tip:** If you move the plugin directory, the symlink breaks. Re-run `npm link` in the plugin directory then `npm link <name>` in the goose directory to fix it.
@@ -168,7 +168,7 @@ npm publish
 After publishing, anyone can install it:
 
 ```bash
-npm install @goose-tools/my-plugin
+npm install @goose-plugins/my-plugin
 # Restart Goose — tools appear automatically
 ```
 
@@ -180,9 +180,9 @@ When a plugin started in `plugins/` is ready to become a proper npm package:
 # 1. Move it out of the goose repo to its own directory
 cp -r plugins/my-tool path/to/my-plugin
 
-# 2. Update package.json with the correct @goose-tools/ name, then link it
+# 2. Update package.json with the correct @goose-plugins/ name, then link it
 cd path/to/my-plugin && npm link
-cd path/to/goose && npm link @goose-tools/my-tool
+cd path/to/goose && npm link @goose-plugins/my-tool
 
 # 3. Remove the local copy (or leave it — deduplication handles the overlap, npm version wins)
 rm -rf plugins/my-tool
@@ -201,7 +201,7 @@ Plugins that need to store state between conversations should use a `store.js` m
 
 ---
 
-## Reference: `@goose-tools/architecture`
+## Reference: `@goose-plugins/architecture`
 
 The architecture plugin is the canonical example. It demonstrates:
 - Multi-tool plugin with a shared persistence layer (`store.js`)

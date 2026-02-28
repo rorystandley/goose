@@ -53,6 +53,7 @@ Results are posted to the configured Slack channel. If no channel is set, the re
 | `freshContext` | boolean | | Generate a unique contextId for each run. The mission starts with no memory of previous runs — each firing is a blank slate. Useful for open-ended reflection tasks where you don't want the model to repeat prior conclusions. |
 | `postLastThought` | boolean | | After the mission completes, read `data/thoughts.jsonl` for any `record_thought` entries written during this run and post the most recent one to Slack instead of the model's response text. Falls back to the model's response if no thought was recorded. Pair with the `record_thought` tool in the task description. |
 | `maxIterations` | number | | Override the global `MAX_TOOL_ITERATIONS` limit for this mission only. One iteration = one LLM call (a single call may execute multiple tools). Use for complex multi-step missions that need more headroom — e.g. reading many files, chained tool tasks. Defaults to `MAX_TOOL_ITERATIONS` env var (default: 10). |
+| `allowDangerous` | boolean | | Allow dangerous tools (`write_file`, `run_command`, and any plugin tools marked `dangerous`) to run automatically in this mission without human approval. Defaults to `false`. Prefer this over the global `SCHEDULER_ALLOW_DANGEROUS` env var — it scopes the permission to just the mission that needs it. |
 
 ---
 
@@ -123,15 +124,22 @@ See [docs/memory.md](memory.md) for the full memory write-up.
 
 ## Dangerous tools in missions
 
-The scheduler runs headless — there's no human to approve dangerous tools (`write_file`, `run_command`). By default these are **denied**: the LLM is told the action was refused and produces a response without it.
+The scheduler runs headless — there's no human to approve dangerous tools (`write_file`, `run_command`, or plugin tools marked `dangerous`). By default these are **denied**: the LLM is told the action was refused and continues without it.
 
-To allow dangerous tools in scheduled missions, set in `.env`:
+To allow dangerous tools, add `"allowDangerous": true` to the specific mission in `missions.json`:
 
+```json
+{
+  "name": "disk-check",
+  "cron": "0 9 * * MON",
+  "allowDangerous": true,
+  "task": "Run the command: df -h and summarise disk usage."
+}
 ```
-SCHEDULER_ALLOW_DANGEROUS=true
-```
 
-> **Note:** The `disk-check` example task uses `run_command: df -h` which is a dangerous tool. It requires `SCHEDULER_ALLOW_DANGEROUS=true` to actually run the command. Without it, Goose will describe the disk check but won't execute the command.
+This scopes the permission to just the mission that needs it. A `free-thought` or `morning-briefing` mission running at 4am will never run `run_command` or `write_file` unless you explicitly opt that mission in.
+
+**Global override (dev/testing only):** Setting `SCHEDULER_ALLOW_DANGEROUS=true` in `.env` allows dangerous tools in *every* mission at once. Not recommended for production — use per-mission `allowDangerous` instead.
 
 ---
 
@@ -157,6 +165,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "disk-check",
   "cron": "0 9 * * MON",
+  "allowDangerous": true,
   "task": "Run the command: df -h and summarise disk usage. Warn clearly if any volume is over 80% full.",
   "contextId": "mission-disk-check",
   "slackChannel": "YOUR_CHANNEL_ID",
@@ -164,7 +173,7 @@ Copy any of these into your `data/missions.json`:
   "enabled": true
 }
 ```
-> Requires `SCHEDULER_ALLOW_DANGEROUS=true` — uses `run_command`.
+> `allowDangerous: true` — required because this mission uses `run_command`.
 
 ### Daily news digest
 ```json
@@ -257,7 +266,7 @@ Copy any of these into your `data/missions.json`:
 | Mission never fires | `"enabled": false` | Set to `true` and restart |
 | Mission never fires | Invalid cron expression | Check logs for `Invalid cron expression — mission skipped`; use [crontab.guru](https://crontab.guru) to validate |
 | No Slack message | `slackChannel` missing or wrong | Verify channel ID starts with `C`; check logs for `Mission complete` |
-| `run_command` / `write_file` not executing | Dangerous tools denied | Set `SCHEDULER_ALLOW_DANGEROUS=true` in `.env` |
+| `run_command` / `write_file` not executing | Dangerous tools denied | Add `"allowDangerous": true` to the mission in `missions.json` |
 | Wrong time | Default timezone | Set `"timezone"` to your IANA timezone, e.g. `"America/New_York"` |
 | Scheduler not starting | `data/missions.json` missing | Copy `missions.example.json` → `data/missions.json` |
 | Slack posts feel repetitive / repeat same thought | No `freshContext` on reflection missions | Add `"freshContext": true` — each run gets a unique contextId and starts blank |
