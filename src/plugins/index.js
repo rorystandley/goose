@@ -31,7 +31,7 @@ async function tryLoadNpmPackage(packageName, importFn) {
 
 /**
  * Scan node_modules for Goose plugins by naming convention:
- *   @goose-tools/*      — scoped namespace for official / community plugins
+ *   @goose-plugins/*    — scoped namespace for official / community plugins
  *   goose-plugin-*      — unscoped alternative
  *
  * Any installed package matching either pattern is automatically loaded.
@@ -43,12 +43,14 @@ async function loadNpmPlugins({ importFn }) {
 
   if (!fs.existsSync(nodeModulesDir)) return allTools;
 
-  // @goose-tools/* scoped packages
-  const scopeDir = path.join(nodeModulesDir, '@goose-tools');
+  // @goose-plugins/* scoped packages
+  // isDirectory() || isSymbolicLink() — npm-linked packages appear as symlinks,
+  // real npm installs appear as directories. Both must be accepted.
+  const scopeDir = path.join(nodeModulesDir, '@goose-plugins');
   if (fs.existsSync(scopeDir)) {
     const entries = fs.readdirSync(scopeDir, { withFileTypes: true });
-    for (const entry of entries.filter(e => e.isDirectory())) {
-      allTools.push(...await tryLoadNpmPackage(`@goose-tools/${entry.name}`, importFn));
+    for (const entry of entries.filter(e => e.isDirectory() || e.isSymbolicLink())) {
+      allTools.push(...await tryLoadNpmPackage(`@goose-plugins/${entry.name}`, importFn));
     }
   }
 
@@ -124,7 +126,7 @@ async function loadLocalPlugins({ importFn }) {
 /**
  * Discover and load all plugins — npm packages first, then local plugins/ dir.
  *
- * npm packages: any installed package matching @goose-tools/* or goose-plugin-*
+ * npm packages: any installed package matching @goose-plugins/* or goose-plugin-*
  * is auto-discovered from node_modules without any configuration.
  * Install the package and restart Goose — it just works.
  *
