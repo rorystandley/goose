@@ -325,6 +325,26 @@ describe('makeSchedulerCallbacks', () => {
     expect(approved).toBe(true);
   });
 
+  it('approves dangerous tools when mission allowDangerous=true, global flag false', async () => {
+    vi.resetModules();
+    vi.doMock('../../config.js', () => ({
+      default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: false },
+    }));
+    const { makeSchedulerCallbacks: mkCbs } = await import('../../scheduler/index.js');
+    const approved = await mkCbs('twitter-marketing', true).onToolCall({ toolName: 'twitter_post_tweet', requiresApproval: true });
+    expect(approved).toBe(true);
+  });
+
+  it('denies dangerous tools when mission allowDangerous=false and global flag false', async () => {
+    vi.resetModules();
+    vi.doMock('../../config.js', () => ({
+      default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: false },
+    }));
+    const { makeSchedulerCallbacks: mkCbs } = await import('../../scheduler/index.js');
+    const approved = await mkCbs('free-thought', false).onToolCall({ toolName: 'run_command', requiresApproval: true });
+    expect(approved).toBe(false);
+  });
+
   it('onToolResult does not throw', () => {
     expect(() => makeSchedulerCallbacks('test').onToolResult({ toolName: 'web_search', result: 'ok' })).not.toThrow();
   });

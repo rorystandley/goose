@@ -53,12 +53,21 @@ export function loadMissions() {
 
 /**
  * Build the runAgent callbacks for a scheduled mission.
- * Dangerous tools are denied by default (SCHEDULER_ALLOW_DANGEROUS=false).
+ *
+ * Dangerous tools are denied by default. Opt in at the mission level by
+ * setting `"allowDangerous": true` in the mission object (missions.json).
+ * The global SCHEDULER_ALLOW_DANGEROUS env var acts as an override that
+ * enables dangerous tools for every mission at once — useful for development
+ * but not recommended in production.
+ *
+ * @param {string}  missionName
+ * @param {boolean} allowDangerous  Per-mission opt-in from missions.json
  */
-export function makeSchedulerCallbacks(missionName) {
+export function makeSchedulerCallbacks(missionName, allowDangerous = false) {
+  const permitted = allowDangerous || config.SCHEDULER_ALLOW_DANGEROUS;
   return {
     onToolCall: async ({ toolName, requiresApproval }) => {
-      if (requiresApproval && !config.SCHEDULER_ALLOW_DANGEROUS) {
+      if (requiresApproval && !permitted) {
         log.warn('Dangerous tool denied in scheduled mission', { mission: missionName, tool: toolName });
         return false;
       }
@@ -127,7 +136,7 @@ export function startScheduler(notify = null) {
             mission.task,
             contextId,
             {
-              ...makeSchedulerCallbacks(mission.name),
+              ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
               ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
             },
           );
