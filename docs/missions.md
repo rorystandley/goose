@@ -31,6 +31,7 @@ Results are posted to the configured Slack channel. If no channel is set, the re
     {
       "name":         "morning-briefing",
       "cron":         "0 8 * * MON-FRI",
+      "freshContext":  true,
       "task":         "Check the weather for London and give a brief morning summary.",
       "enabled":      true,
       "slackChannel": "C07ABCD1234",
@@ -50,10 +51,13 @@ Results are posted to the configured Slack channel. If no channel is set, the re
 | `slackChannel` | string | | Slack channel or DM ID to post the result to (e.g. `C07ABCD1234`). If omitted, result is logged to stdout only. |
 | `contextId` | string | | Override the memory context key. Defaults to `mission-<name>`. Set to a Slack user ID to share memory with that user's DM history. |
 | `timezone` | string | | IANA timezone name for the cron schedule. Defaults to `UTC`. Examples: `Europe/London`, `America/New_York`, `Asia/Tokyo`. |
-| `freshContext` | boolean | | Generate a unique contextId for each run. The mission starts with no memory of previous runs — each firing is a blank slate. Useful for open-ended reflection tasks where you don't want the model to repeat prior conclusions. |
+| `freshContext` | boolean | | **Recommended for all missions.** Generate a unique contextId for each run so the mission starts with no memory of previous runs. Without this, context accumulates across cron fires and the model drifts — it may ignore instructions, repeat itself, or fabricate responses based on prior patterns instead of calling tools. Only omit this if you specifically want cross-run memory. |
 | `postLastThought` | boolean | | After the mission completes, read `data/thoughts.jsonl` for any `record_thought` entries written during this run and post the most recent one to Slack instead of the model's response text. Falls back to the model's response if no thought was recorded. Pair with the `record_thought` tool in the task description. |
 | `maxIterations` | number | | Override the global `MAX_TOOL_ITERATIONS` limit for this mission only. One iteration = one LLM call (a single call may execute multiple tools). Use for complex multi-step missions that need more headroom — e.g. reading many files, chained tool tasks. Defaults to `MAX_TOOL_ITERATIONS` env var (default: 10). |
 | `allowDangerous` | boolean | | Allow dangerous tools (`write_file`, `run_command`, and any plugin tools marked `dangerous`) to run automatically in this mission without human approval. Defaults to `false`. Prefer this over the global `SCHEDULER_ALLOW_DANGEROUS` env var — it scopes the permission to just the mission that needs it. |
+| `saveResponseTo` | string | | File path (relative to project root) where the model's text response is written after the mission completes. Useful for missions that compose content for another mission to consume — e.g. a research mission saves findings to a file that a compose mission later injects. |
+| `injectFiles` | array | | Array of `{ "label": "...", "path": "...", "transform": "..." }` objects. Each file's contents are appended to the task string under a labelled header before the mission runs. Optionally set `transform` to pre-process the file before injection (see [inject files](#inject-files)). Enables text-in → text-out missions with zero tool calls — the model gets all context pre-loaded. |
+| `notifyFrom` | string | | File path (relative to project root) to read the Slack notification content from instead of using the model's response. Useful when a plugin tool writes a formatted notification to a file during execution. Falls back to the model's response if the file doesn't exist. |
 
 ---
 
@@ -122,6 +126,64 @@ See [docs/memory.md](memory.md) for the full memory write-up.
 
 ---
 
+## Inject files
+
+The `injectFiles` field lets you pre-load file contents into the task string so the model receives all context without making tool calls. This is critical for 14B models (qwen2.5, qwen3) which batch all tool calls in a single response — meaning tool call 5 can't use the result of tool call 2.
+
+```json
+{
+  "name": "twitter-compose",
+  "freshContext": true,
+  "maxIterations": 1,
+  "task": "Pick a technique from the AVAILABLE TECHNIQUES list below...",
+  "saveResponseTo": "data/marketing/draft-tweet.txt",
+  "injectFiles": [
+    { "label": "AVAILABLE TECHNIQUES", "path": "data/marketing/hook-history.json", "transform": "recentTechniques", "window": 5 },
+    { "label": "RESEARCH", "path": "data/marketing/research.md" }
+  ]
+}
+```
+
+The scheduler appends each file's contents to the task string under a labelled header:
+
+```
+Pick a technique from the AVAILABLE TECHNIQUES list below...
+
+--- AVAILABLE TECHNIQUES ---
+Recently used (DO NOT pick these):
+- open_loop (used 2x)
+- pattern_interrupt
+- direct_pain
+
+Available (pick ONE of these):
+- contradiction
+- hot_take
+- stolen_thought
+- micro_story
+- specific_numbers
+
+--- RESEARCH ---
+[contents of research.md]
+```
+
+If a file doesn't exist, the section reads `(file not available: path)`.
+
+**When to use:** Missions where the model needs context from files but shouldn't call tools to get it. Pair with `maxIterations: 1` and `saveResponseTo` for pure text-in → text-out pipelines.
+
+### Transforms
+
+Each injectFiles entry can include a `transform` field that pre-processes the file contents before injection. This offloads reasoning work from the model — instead of parsing JSON and making decisions, it receives a pre-computed result it can act on directly.
+
+| Transform | Description | Extra fields |
+|---|---|---|
+| `recentTechniques` | Parse hook-history JSON and output a plain-text "recently used / available" technique list. The model picks from a pre-filtered list instead of parsing JSON. | `window` (number) — how many recent entries to consider. Default: 5. |
+
+Without a `transform`, the raw file contents are injected as-is.
+
+**Why transforms matter for 14B models:** A 14B model running with `maxIterations: 1` gets one shot. Asking it to parse JSON, count occurrences, compute exclusions, and then compose content is too much reasoning in a single pass. The `recentTechniques` transform does the counting and filtering at the scheduler level (in JavaScript), so the model just reads a plain-text list and picks from it.
+
+---
+
 ## Dangerous tools in missions
 
 The scheduler runs headless — there's no human to approve dangerous tools (`write_file`, `run_command`, or plugin tools marked `dangerous`). By default these are **denied**: the LLM is told the action was refused and continues without it.
@@ -152,6 +214,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "morning-briefing",
   "cron": "0 8 * * MON-FRI",
+  "freshContext": true,
   "task": "Check the current weather for London, then give a brief morning summary: today's date, the weather forecast, and one interesting tech news headline.",
   "contextId": "mission-morning-briefing",
   "slackChannel": "YOUR_CHANNEL_ID",
@@ -165,6 +228,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "disk-check",
   "cron": "0 9 * * MON",
+  "freshContext": true,
   "allowDangerous": true,
   "task": "Run the command: df -h and summarise disk usage. Warn clearly if any volume is over 80% full.",
   "contextId": "mission-disk-check",
@@ -180,6 +244,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "news-digest",
   "cron": "0 7 * * *",
+  "freshContext": true,
   "task": "Search the web for today's top 3 technology news stories. Give a one-sentence summary of each with the source name.",
   "contextId": "mission-news-digest",
   "slackChannel": "YOUR_CHANNEL_ID",
@@ -193,6 +258,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "friday-git-digest",
   "cron": "0 17 * * FRI",
+  "freshContext": true,
   "task": "List the files in path/to/your/project and tell me what has changed recently. Focus on any new files or directories.",
   "contextId": "mission-friday-digest",
   "slackChannel": "YOUR_CHANNEL_ID",
@@ -206,6 +272,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "monday-notes",
   "cron": "0 9 * * MON",
+  "freshContext": true,
   "task": "List all files in ~/your-notes and tell me which ones were modified in the last 7 days. Summarise what topics they cover based on their filenames.",
   "contextId": "mission-monday-notes",
   "slackChannel": "YOUR_CHANNEL_ID",
@@ -236,6 +303,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "daily-reflection",
   "cron": "0 7 * * *",
+  "freshContext": true,
   "task": "Read the files inside src/tools/ one by one. For each tool, read its source code. As you go, use record_thought to capture anything that strikes you — patterns, gaps, ideas, questions, things you'd change. When you're done, give a summary of what you found interesting and what tool you think is missing.",
   "contextId": "mission-daily-reflection",
   "slackChannel": "YOUR_CHANNEL_ID",
@@ -249,6 +317,7 @@ Copy any of these into your `data/missions.json`:
 {
   "name": "uptime-ping",
   "cron": "0 * * * *",
+  "freshContext": true,
   "task": "Get the current date and time, then confirm you are online and ready. Keep the response to one sentence.",
   "contextId": "mission-uptime",
   "slackChannel": "YOUR_CHANNEL_ID",
@@ -269,7 +338,11 @@ Copy any of these into your `data/missions.json`:
 | `run_command` / `write_file` not executing | Dangerous tools denied | Add `"allowDangerous": true` to the mission in `missions.json` |
 | Wrong time | Default timezone | Set `"timezone"` to your IANA timezone, e.g. `"America/New_York"` |
 | Scheduler not starting | `data/missions.json` missing | Copy `missions.example.json` → `data/missions.json` |
-| Slack posts feel repetitive / repeat same thought | No `freshContext` on reflection missions | Add `"freshContext": true` — each run gets a unique contextId and starts blank |
+| Slack posts feel repetitive / repeat same thought | No `freshContext` — context accumulates across runs | Add `"freshContext": true` — each run gets a unique contextId and starts blank. Recommended for **all** missions. |
+| Model fabricates results without calling tools | Context drift — accumulated history lets the model pattern-match instead of executing | Add `"freshContext": true`. Without it, the model may "remember" previous results and hallucinate plausible responses (e.g. a backup mission reporting success without running the backup tool). |
+| Tool call arguments contain literal prompt text | 14B model batching — all tool calls are composed in one response before any results return | Remove dependent tool calls. Use `saveResponseTo` to capture the model's text response, or `injectFiles` to pre-load context. See [Inject files](#inject-files). |
+| Model ignores "don't repeat" constraints / picks same option repeatedly | 14B model can't parse JSON and reason about exclusions in one pass | Use a `transform` on the injectFiles entry to pre-compute the available options. See [Transforms](#transforms). |
+| Slack notification shows stale/wrong result | `notifyFrom` file left over from a previous run | Make sure ALL exit paths in the plugin (error, skip, success) write to the notify file. Delete stale notify files after fixing. |
 | Slack posts feel hollow / model says "I'm ready to help" | Model response used instead of thought | Add `"postLastThought": true` and make sure the task instructs the model to use `record_thought` |
 | Mission posts "I reached the maximum number of steps" | Task exceeds the default 10-iteration limit | Add `"maxIterations": 20` (or higher) to the mission; or raise `MAX_TOOL_ITERATIONS` globally in `.env` |
 
@@ -279,7 +352,7 @@ Copy any of these into your `data/missions.json`:
 
 | File | Role |
 |---|---|
-| `src/scheduler/index.js` | `loadMissions()`, `startScheduler()`, `makeSchedulerCallbacks()`, `readLastThoughtSince()` |
+| `src/scheduler/index.js` | `loadMissions()`, `startScheduler()`, `makeSchedulerCallbacks()`, `buildTask()`, `formatTechniqueList()`, `buildNotifyContent()`, `readLastThoughtSince()` |
 | `missions.example.json` | Committed template — copy to `data/missions.json` |
 | `data/missions.json` | Runtime config (not committed — in `.gitignore`) |
 | `src/index.js` | Calls `startScheduler()` after Slack bot starts |

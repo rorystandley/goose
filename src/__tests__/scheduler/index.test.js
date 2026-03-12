@@ -4,10 +4,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockReadFileSync = vi.hoisted(() => vi.fn());
+const mockReadFileSync  = vi.hoisted(() => vi.fn());
+const mockWriteFileSync = vi.hoisted(() => vi.fn());
+const mockMkdirSync     = vi.hoisted(() => vi.fn());
 
 vi.mock('fs', () => ({
-  default: { readFileSync: mockReadFileSync },
+  default: {
+    readFileSync: mockReadFileSync,
+    writeFileSync: mockWriteFileSync,
+    mkdirSync: mockMkdirSync,
+  },
 }));
 
 // node-cron: capture schedule(expr, fn, opts) calls
@@ -32,7 +38,7 @@ vi.mock('../../config.js', () => ({
 }));
 
 // Import after mocks
-import { loadMissions, makeSchedulerCallbacks, startScheduler } from '../../scheduler/index.js';
+import { loadMissions, makeSchedulerCallbacks, startScheduler, buildTask, formatTechniqueList } from '../../scheduler/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -286,6 +292,216 @@ describe('startScheduler — postLastThought', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildTask — injectFiles
+// ---------------------------------------------------------------------------
+describe('buildTask', () => {
+  it('returns task unchanged when injectFiles is not set', () => {
+    expect(buildTask({ task: 'Do something' })).toBe('Do something');
+  });
+
+  it('returns task unchanged when injectFiles is empty', () => {
+    expect(buildTask({ task: 'Do something', injectFiles: [] })).toBe('Do something');
+  });
+
+  it('appends file contents under labelled headers', () => {
+    mockReadFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.includes('data.txt')) return '  file content here  ';
+      throw new Error('ENOENT');
+    });
+    const result = buildTask({
+      task: 'Write a tweet.',
+      injectFiles: [{ label: 'CONTEXT', path: 'data.txt' }],
+    });
+    expect(result).toContain('Write a tweet.');
+    expect(result).toContain('--- CONTEXT ---');
+    expect(result).toContain('file content here');
+  });
+
+  it('injects fallback note when file is missing', () => {
+    const result = buildTask({
+      task: 'Write a tweet.',
+      injectFiles: [{ label: 'MISSING', path: 'nope.txt' }],
+    });
+    expect(result).toContain('--- MISSING ---');
+    expect(result).toContain('(file not available: nope.txt)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatTechniqueList
+// ---------------------------------------------------------------------------
+describe('formatTechniqueList', () => {
+  const history = (entries) => JSON.stringify({ entries });
+
+  it('lists all 8 techniques as available when history is empty', () => {
+    const result = formatTechniqueList(history([]));
+    expect(result).toContain('Available (pick ONE of these):');
+    expect(result).toContain('- contradiction');
+    expect(result).toContain('- hot_take');
+    expect(result).toContain('- stolen_thought');
+    expect(result).toContain('- micro_story');
+    expect(result).toContain('- specific_numbers');
+    expect(result).toContain('- open_loop');
+    expect(result).toContain('- pattern_interrupt');
+    expect(result).toContain('- direct_pain');
+    expect(result).not.toContain('DO NOT');
+  });
+
+  it('moves recently used techniques to the avoid list', () => {
+    const entries = [
+      { technique: 'open_loop', content: 'tweet 1', timestamp: '2026-03-10T11:00:00Z' },
+      { technique: 'direct_pain', content: 'tweet 2', timestamp: '2026-03-10T12:00:00Z' },
+    ];
+    const result = formatTechniqueList(history(entries));
+    expect(result).toContain('Recently used (DO NOT pick these):');
+    expect(result).toContain('- open_loop');
+    expect(result).toContain('- direct_pain');
+    // These should be in Available, not in Avoid
+    expect(result).toContain('- contradiction');
+    expect(result).toContain('- hot_take');
+  });
+
+  it('shows count when a technique is used multiple times', () => {
+    const entries = [
+      { technique: 'open_loop', content: 'a', timestamp: '2026-03-10T10:00:00Z' },
+      { technique: 'open_loop', content: 'b', timestamp: '2026-03-10T11:00:00Z' },
+      { technique: 'open_loop', content: 'c', timestamp: '2026-03-10T12:00:00Z' },
+    ];
+    const result = formatTechniqueList(history(entries));
+    expect(result).toContain('- open_loop (used 3x)');
+  });
+
+  it('respects the window parameter', () => {
+    const entries = [
+      { technique: 'open_loop', content: 'old', timestamp: '2026-03-09T10:00:00Z' },
+      { technique: 'direct_pain', content: 'a', timestamp: '2026-03-10T10:00:00Z' },
+      { technique: 'hot_take', content: 'b', timestamp: '2026-03-10T11:00:00Z' },
+    ];
+    // window=2 should only consider the last 2 entries
+    const result = formatTechniqueList(history(entries), { window: 2 });
+    expect(result).toContain('Recently used (DO NOT pick these):');
+    expect(result).toContain('- direct_pain');
+    expect(result).toContain('- hot_take');
+    // open_loop should be available since it fell outside the window
+    const availableSection = result.split('Available (pick ONE of these):')[1];
+    expect(availableSection).toContain('- open_loop');
+  });
+
+  it('handles invalid JSON gracefully', () => {
+    const result = formatTechniqueList('not valid json {{');
+    expect(result).toBe('(could not parse hook history)');
+  });
+
+  it('handles missing entries field gracefully', () => {
+    const result = formatTechniqueList(JSON.stringify({ foo: 'bar' }));
+    // No entries means all techniques are available
+    expect(result).toContain('Available (pick ONE of these):');
+    expect(result).toContain('- contradiction');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildTask — transform: recentTechniques
+// ---------------------------------------------------------------------------
+describe('buildTask — transform', () => {
+  it('applies recentTechniques transform to injected file', () => {
+    const hookHistory = JSON.stringify({
+      entries: [
+        { technique: 'open_loop', content: 'tweet', timestamp: '2026-03-10T11:00:00Z' },
+      ],
+    });
+    mockReadFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.includes('hook-history')) return hookHistory;
+      throw new Error('ENOENT');
+    });
+    const result = buildTask({
+      task: 'Write a tweet.',
+      injectFiles: [
+        { label: 'TECHNIQUES', path: 'hook-history.json', transform: 'recentTechniques' },
+      ],
+    });
+    expect(result).toContain('--- TECHNIQUES ---');
+    expect(result).toContain('Recently used (DO NOT pick these):');
+    expect(result).toContain('- open_loop');
+    expect(result).toContain('Available (pick ONE of these):');
+    expect(result).toContain('- contradiction');
+  });
+
+  it('passes window option through to formatTechniqueList', () => {
+    const hookHistory = JSON.stringify({
+      entries: [
+        { technique: 'open_loop', content: 'old', timestamp: '2026-03-09T10:00:00Z' },
+        { technique: 'direct_pain', content: 'recent', timestamp: '2026-03-10T10:00:00Z' },
+      ],
+    });
+    mockReadFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.includes('hook-history')) return hookHistory;
+      throw new Error('ENOENT');
+    });
+    // window=1 means only the last entry counts
+    const result = buildTask({
+      task: 'Write a tweet.',
+      injectFiles: [
+        { label: 'TECHNIQUES', path: 'hook-history.json', transform: 'recentTechniques', window: 1 },
+      ],
+    });
+    // Only direct_pain should be in avoid (last 1 entry)
+    const avoidSection = result.split('Available')[0];
+    expect(avoidSection).toContain('- direct_pain');
+    expect(avoidSection).not.toContain('- open_loop');
+  });
+
+  it('still injects raw content for files without transform', () => {
+    mockReadFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.includes('research')) return 'Research content here';
+      throw new Error('ENOENT');
+    });
+    const result = buildTask({
+      task: 'Write a tweet.',
+      injectFiles: [
+        { label: 'RESEARCH', path: 'research.md' },
+      ],
+    });
+    expect(result).toContain('--- RESEARCH ---');
+    expect(result).toContain('Research content here');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// startScheduler — saveResponseTo
+// ---------------------------------------------------------------------------
+describe('startScheduler — saveResponseTo', () => {
+  async function runWithSaveResponseTo(mission) {
+    mockReadFileSync.mockReturnValue(missionsJson([mission]));
+    startScheduler();
+    const cronFn = mockSchedule.mock.calls[0][1];
+    await cronFn();
+  }
+
+  it('writes runAgent result to saveResponseTo path', async () => {
+    const mission = { ...sampleMission, saveResponseTo: 'data/output.txt' };
+    await runWithSaveResponseTo(mission);
+    expect(mockMkdirSync).toHaveBeenCalled();
+    expect(mockWriteFileSync).toHaveBeenCalledWith(
+      expect.stringContaining('data/output.txt'),
+      'Mission result text',
+      'utf8',
+    );
+  });
+
+  it('does NOT write when saveResponseTo is not set', async () => {
+    await runWithSaveResponseTo(sampleMission);
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when writeFileSync fails', async () => {
+    mockWriteFileSync.mockImplementation(() => { throw new Error('disk full'); });
+    const mission = { ...sampleMission, saveResponseTo: 'data/output.txt' };
+    await expect(runWithSaveResponseTo(mission)).resolves.not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // makeSchedulerCallbacks
 // Each test uses vi.resetModules() + dynamic import to guarantee a fresh
 // module instance with the exact config value it needs, avoiding any
@@ -331,7 +547,7 @@ describe('makeSchedulerCallbacks', () => {
       default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: false },
     }));
     const { makeSchedulerCallbacks: mkCbs } = await import('../../scheduler/index.js');
-    const approved = await mkCbs('twitter-marketing', true).onToolCall({ toolName: 'twitter_post_tweet', requiresApproval: true });
+    const approved = await mkCbs('some-mission', true).onToolCall({ toolName: 'dangerous_tool', requiresApproval: true });
     expect(approved).toBe(true);
   });
 

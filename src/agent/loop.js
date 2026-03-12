@@ -68,7 +68,7 @@ Use record_thought when something strikes you while you work — a curious patte
  * @returns {Promise<string>} The final assistant response
  */
 export async function runAgent(task, contextId, options = {}) {
-  const { onToolCall, onToolResult, maxIterations = config.MAX_TOOL_ITERATIONS, subAgentTools } = options;
+  const { onToolCall, onToolResult, maxIterations = config.MAX_TOOL_ITERATIONS, subAgentTools, maxToolCallsPerIteration = Infinity } = options;
   const taskStart = Date.now();
 
   // Select the model for this task (honours FAST_MODEL / SMART_MODEL routing if configured)
@@ -113,6 +113,14 @@ export async function runAgent(task, contextId, options = {}) {
 
     const llmMs = Date.now() - llmStart;
     const assistantMessage = response.message;
+
+    // Strip thinking tokens from content before they enter the context.
+    // Prevents qwen3 reasoning text from accumulating across iterations
+    // when think: false doesn't fully suppress thinking output at the API level.
+    if (assistantMessage.content) {
+      assistantMessage.content = stripThinking(assistantMessage.content);
+    }
+
     const hasToolCalls = !!assistantMessage.tool_calls?.length;
 
     log.debug('LLM response received', {
@@ -135,14 +143,23 @@ export async function runAgent(task, contextId, options = {}) {
       return content;
     }
 
-    // Push the assistant message (with tool_calls) into the working message array
-    messages.push(assistantMessage);
+    // When maxToolCallsPerIteration is set, slice the tool call list so the model
+    // processes one call at a time. The assistant message pushed to context is also
+    // trimmed so the model sees a clean 1-call-per-round history and can actually
+    // read tool results (e.g. hook history) before composing dependent steps.
+    const toolCallsThisIteration = isFinite(maxToolCallsPerIteration)
+      ? assistantMessage.tool_calls.slice(0, maxToolCallsPerIteration)
+      : assistantMessage.tool_calls;
+
+    // Push the assistant message (with tool_calls) into the working message array.
+    // Use the trimmed list so the context matches what we actually executed.
+    messages.push({ ...assistantMessage, tool_calls: toolCallsThisIteration });
 
     // Track whether any tool was denied this iteration so we can break the loop cleanly
     let anyDenied = false;
 
     // Process each tool call in sequence
-    for (const toolCall of assistantMessage.tool_calls) {
+    for (const toolCall of toolCallsThisIteration) {
       const toolName = toolCall.function?.name;
       const args = toolCall.function?.arguments ?? {};
 
