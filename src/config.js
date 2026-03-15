@@ -31,6 +31,8 @@ const config = Object.freeze({
   PLUGINS_DIR: process.env.PLUGINS_DIR || path.join(process.cwd(), 'plugins'),
   MONITORS_PATH: process.env.MONITORS_PATH || path.join(process.cwd(), 'data', 'monitors.json'),
   MONITORS_ALLOW_DANGEROUS: process.env.MONITORS_ALLOW_DANGEROUS === 'true',
+  KANBAN_PATH: process.env.KANBAN_PATH || path.join(process.cwd(), 'data', 'kanban.json'),
+  KANBAN_POLL_INTERVAL: parseInt(process.env.KANBAN_POLL_INTERVAL || '60000', 10),
   WEB_ENABLED: process.env.WEB_ENABLED === 'true',
   WEB_PORT: parseInt(process.env.WEB_PORT || '3000', 10),
   // Multi-model routing — leave empty to always use OLLAMA_MODEL

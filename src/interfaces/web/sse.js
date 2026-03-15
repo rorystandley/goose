@@ -50,3 +50,22 @@ export function write(contextId, eventName, data) {
     }
   }
 }
+
+/**
+ * Broadcast an SSE event to ALL connected clients across all contextIds.
+ * Used for global state changes like kanban board updates.
+ * @param {string} eventName
+ * @param {object} data — will be JSON-serialised
+ */
+export function broadcast(eventName, data) {
+  const frame = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const set of clients.values()) {
+    for (const writeFn of set) {
+      try {
+        writeFn(frame);
+      } catch {
+        set.delete(writeFn);
+      }
+    }
+  }
+}
