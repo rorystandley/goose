@@ -2,11 +2,51 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [develop, main, master]
   pull_request:
-    branches: [main, master]
+    branches: [develop, main, master]
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
   test:
     name: Test & Coverage
     runs-on: ubuntu-latest
@@ -27,7 +67,6 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
         env:
-          # Provide dummy Slack credentials so config.js doesn't throw
           SLACK_BOT_TOKEN: xoxb-ci-placeholder
           SLACK_APP_TOKEN: xapp-ci-placeholder
           SLACK_SIGNING_SECRET: ci-signing-secret
