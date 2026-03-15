@@ -1,14 +1,20 @@
 /**
  * Returns the complete single-file HTML dashboard for the Goose web UI.
- * @param {string} agentName — from config.AGENT_NAME
- * @param {string} model     — from config.OLLAMA_MODEL
+ * @param {string} agentName        — from config.AGENT_NAME
+ * @param {string} model            — from config.OLLAMA_MODEL
+ * @param {number} kanbanPollInterval — from config.KANBAN_POLL_INTERVAL (ms)
  */
-export function getHtml(agentName, model) {
+export function getHtml(agentName, model, kanbanPollInterval = 60000) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="manifest" href="/assets/site.webmanifest">
   <title>${agentName} — Mission Control</title>
   <style>
     /* ── Design tokens ─────────────────────────────────────────── */
@@ -72,8 +78,10 @@ export function getHtml(agentName, model) {
     }
 
     #header .logo {
-      font-size: 20px;
-      line-height: 1;
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
+      opacity: 0.95;
     }
 
     #header .title {
@@ -107,8 +115,30 @@ export function getHtml(agentName, model) {
       background: var(--green);
       transition: background 0.3s;
     }
-    #header .status-dot.busy { background: var(--orange); }
+    #header .status-dot.busy  { background: var(--orange); }
     #header .status-dot.error { background: var(--red); }
+
+    /* ── Tab bar ─────────────────────────────────────────────────── */
+    .tab-bar {
+      display: flex;
+      gap: 2px;
+      background: var(--surface-3);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+    }
+    .tab {
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      color: var(--text-dim);
+      font-family: var(--font);
+      font-size: 12px;
+      padding: 4px 14px;
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { background: var(--surface-2); color: var(--text); }
 
     /* ── Main panel (chat + stream) ─────────────────────────────── */
     #main {
@@ -143,7 +173,12 @@ export function getHtml(agentName, model) {
       color: var(--text-muted);
       font-family: var(--sans);
     }
-    #empty-state .empty-icon { font-size: 36px; opacity: 0.4; }
+    #empty-state .empty-icon {
+      width: 72px;
+      height: 72px;
+      object-fit: contain;
+      opacity: 0.45;
+    }
     #empty-state p { font-size: 13px; }
 
     /* ── Messages ────────────────────────────────────────────────── */
@@ -155,9 +190,9 @@ export function getHtml(agentName, model) {
       animation: fadeIn 0.15s ease;
     }
 
-    .msg.user { align-self: flex-end; }
+    .msg.user      { align-self: flex-end; }
     .msg.assistant { align-self: flex-start; }
-    .msg.error { align-self: flex-start; }
+    .msg.error     { align-self: flex-start; }
 
     .msg-label {
       font-size: 10px;
@@ -212,13 +247,8 @@ export function getHtml(agentName, model) {
       margin-bottom: 6px;
     }
 
-    .tool-icon { font-size: 13px; }
-
-    .tool-name {
-      font-weight: 600;
-      color: var(--blue);
-      font-size: 12px;
-    }
+    .tool-icon  { font-size: 13px; }
+    .tool-name  { font-weight: 600; color: var(--blue); font-size: 12px; }
 
     .risk-badge {
       font-size: 9px;
@@ -228,9 +258,9 @@ export function getHtml(agentName, model) {
       padding: 2px 6px;
       border-radius: 3px;
     }
-    .risk-safe    { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(63,185,80,0.3); }
-    .risk-moderate{ background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
-    .risk-dangerous{ background: var(--red-dim);   color: var(--red);    border: 1px solid rgba(248,81,73,0.3); }
+    .risk-safe     { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(63,185,80,0.3); }
+    .risk-moderate { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+    .risk-dangerous{ background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(248,81,73,0.3); }
 
     .tool-args {
       background: var(--surface-3);
@@ -304,10 +334,7 @@ export function getHtml(agentName, model) {
       overflow-y: auto;
     }
 
-    .approval-actions {
-      display: flex;
-      gap: 8px;
-    }
+    .approval-actions { display: flex; gap: 8px; }
 
     .btn-approve, .btn-deny {
       flex: 1;
@@ -323,15 +350,8 @@ export function getHtml(agentName, model) {
     .btn-approve:hover { opacity: 0.85; transform: translateY(-1px); }
     .btn-deny:hover    { opacity: 0.85; transform: translateY(-1px); }
     .btn-approve:disabled, .btn-deny:disabled { opacity: 0.4; cursor: default; transform: none; }
-
-    .btn-approve {
-      background: var(--green);
-      color: #000;
-    }
-    .btn-deny {
-      background: var(--red);
-      color: #fff;
-    }
+    .btn-approve { background: var(--green); color: #000; }
+    .btn-deny    { background: var(--red);   color: #fff; }
 
     .approval-resolved {
       font-size: 11px;
@@ -445,10 +465,7 @@ export function getHtml(agentName, model) {
     }
     #context-select option { background: var(--surface-2); }
 
-    .memory-actions {
-      display: flex;
-      gap: 6px;
-    }
+    .memory-actions { display: flex; gap: 6px; }
 
     .btn-sm {
       background: var(--surface-3);
@@ -511,6 +528,394 @@ export function getHtml(agentName, model) {
       font-size: 12px;
     }
 
+    /* ── Kanban view ─────────────────────────────────────────────── */
+    #kanban-view {
+      display: none;
+      flex-direction: column;
+      grid-column: 1 / -1;
+      overflow: hidden;
+    }
+
+    #kanban-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .kb-toolbar-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+    }
+
+    #kb-next-check {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    #kanban-toolbar .spacer { flex: 1; }
+
+    .kb-toolbar-btn {
+      background: var(--surface-3);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      font-family: var(--font);
+      font-size: 11px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .kb-toolbar-btn:hover { color: var(--text); border-color: var(--text-dim); }
+    .kb-toolbar-btn.paused { color: var(--orange); border-color: rgba(245,166,35,0.4); }
+
+    /* ── Kanban board grid ───────────────────────────────────────── */
+    #kanban-board {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 16px;
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: hidden;
+      min-height: 0;
+    }
+
+    .kb-col {
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .kb-col-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      font-family: var(--sans);
+      flex-shrink: 0;
+    }
+    .kb-col[data-status="ready"]       .kb-col-header { color: var(--blue); }
+    .kb-col[data-status="in-progress"] .kb-col-header { color: var(--orange); }
+    .kb-col[data-status="done"]        .kb-col-header { color: var(--green); }
+
+    .kb-count {
+      background: var(--surface-3);
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--font);
+    }
+
+    .kb-cards {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 40px;
+    }
+    .kb-cards::-webkit-scrollbar { width: 3px; }
+    .kb-cards::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+    .kb-cards.drag-over {
+      background: var(--surface-2);
+      outline: 1px dashed var(--border-2);
+      outline-offset: -2px;
+      border-radius: var(--radius-sm);
+    }
+
+    /* ── Kanban card ─────────────────────────────────────────────── */
+    .kb-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      cursor: grab;
+      animation: fadeIn 0.15s ease;
+      transition: border-color 0.15s;
+    }
+    .kb-card:hover { border-color: var(--border-2); }
+    .kb-card:active { cursor: grabbing; }
+    .kb-card.dragging { opacity: 0.4; cursor: grabbing; }
+    .kb-card[data-status="in-progress"] {
+      cursor: default;
+      border-color: rgba(245,166,35,0.3);
+    }
+
+    .kb-card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 7px;
+      line-height: 1.4;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .kb-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .kb-priority {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .kb-priority-urgent { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(248,81,73,0.3); }
+    .kb-priority-high   { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(245,166,35,0.3); }
+    .kb-priority-medium { background: var(--blue-dim);   color: var(--blue);   border: 1px solid rgba(88,166,255,0.3); }
+    .kb-priority-low    { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+
+    .kb-tag {
+      font-size: 9px;
+      color: var(--text-muted);
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
+
+    .kb-time-dim {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-left: auto;
+      white-space: nowrap;
+    }
+
+    .kb-live-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--orange);
+      flex-shrink: 0;
+      margin-top: 4px;
+      animation: kbpulse 1.5s ease infinite;
+    }
+
+    @keyframes kbpulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+
+    .kb-card-actions {
+      display: none;
+      gap: 4px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .kb-card:hover .kb-card-actions { display: flex; }
+
+    .kb-action-btn {
+      background: var(--surface-3);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      font-family: var(--font);
+      font-size: 10px;
+      padding: 2px 8px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .kb-action-btn:hover        { color: var(--text); border-color: var(--text-dim); }
+    .kb-action-btn.danger:hover { color: var(--red);  border-color: var(--red); }
+    .kb-action-btn.primary      { color: var(--orange); border-color: rgba(245,166,35,0.4); }
+    .kb-action-btn.primary:hover { border-color: var(--orange); }
+
+    .kb-card-body {
+      display: none;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .kb-card.expanded .kb-card-body { display: block; }
+
+    .kb-card-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 8px;
+      line-height: 1.6;
+    }
+
+    .kb-result-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--green);
+      margin-bottom: 4px;
+    }
+
+    .kb-card-result {
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    /* ── Add task form ────────────────────────────────────────────── */
+    .kb-add-trigger {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      cursor: pointer;
+      transition: color 0.15s;
+      flex-shrink: 0;
+    }
+    .kb-add-trigger:hover { color: var(--text-dim); }
+
+    .kb-add-form {
+      padding: 8px;
+      border-top: 1px solid var(--border);
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .kb-add-form.open { display: flex; }
+
+    .kb-form-input, .kb-form-textarea, .kb-form-select {
+      background: var(--surface-3);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 11px;
+      padding: 6px 8px;
+      outline: none;
+      width: 100%;
+    }
+    .kb-form-input:focus, .kb-form-textarea:focus { border-color: var(--orange); }
+    .kb-form-input::placeholder, .kb-form-textarea::placeholder { color: var(--text-muted); }
+    .kb-form-textarea { resize: vertical; min-height: 60px; }
+    .kb-form-select { cursor: pointer; }
+    .kb-form-select option { background: var(--surface-3); }
+
+    .kb-form-row { display: flex; gap: 6px; }
+    .kb-form-row .kb-form-select { flex: 0 0 90px; }
+    .kb-form-row .kb-form-input  { flex: 1; }
+    .kb-form-actions { display: flex; gap: 6px; }
+
+    /* ── Inline edit form ────────────────────────────────────────── */
+    .kb-edit-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* ── allowDangerous checkbox ─────────────────────────────────── */
+    .kb-form-check {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      color: var(--text-dim);
+      cursor: pointer;
+      user-select: none;
+    }
+    .kb-form-check input[type="checkbox"] { accent-color: var(--orange); cursor: pointer; }
+
+    /* ── Tab badge (approval pending indicator) ──────────────────── */
+    .tab[data-badge]::after {
+      content: attr(data-badge);
+      background: var(--red);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 0 4px;
+      margin-left: 5px;
+      line-height: 1.6;
+      vertical-align: middle;
+    }
+
+    /* ── Kanban approval card (inside in-progress card) ──────────── */
+    .kb-approval {
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--red-dim);
+      border: 1px solid rgba(248,81,73,0.35);
+      border-radius: var(--radius-sm);
+      animation: fadeIn 0.15s ease;
+    }
+
+    .kb-approval-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--red);
+      margin-bottom: 6px;
+    }
+
+    .kb-approval-args {
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 5px 8px;
+      font-size: 10px;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 80px;
+      overflow-y: auto;
+      margin-bottom: 8px;
+    }
+
+    .kb-approval-actions { display: flex; gap: 6px; }
+
+    .kb-btn-approve, .kb-btn-deny {
+      flex: 1;
+      padding: 5px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .kb-btn-approve:hover, .kb-btn-deny:hover { opacity: 0.85; }
+    .kb-btn-approve { background: var(--green); color: #000; }
+    .kb-btn-deny    { background: var(--red);   color: #fff; }
+
     /* ── Animations ──────────────────────────────────────────────── */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(4px); }
@@ -527,10 +932,14 @@ export function getHtml(agentName, model) {
 
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <header id="header">
-    <span class="logo">🪿</span>
+    <img class="logo" src="/assets/goose.png" alt="Goose logo">
     <div>
       <div class="title">${agentName}</div>
       <div class="subtitle">${model}</div>
+    </div>
+    <div class="tab-bar">
+      <button class="tab active" data-tab="chat">Chat</button>
+      <button class="tab" data-tab="kanban">Kanban</button>
     </div>
     <div class="spacer"></div>
     <div class="status-dot" id="status-dot"></div>
@@ -541,7 +950,7 @@ export function getHtml(agentName, model) {
   <main id="main">
     <div id="timeline">
       <div id="empty-state">
-        <div class="empty-icon">🪿</div>
+        <img class="empty-icon" src="/assets/goose.png" alt="" aria-hidden="true">
         <p>Talk to me, Goose.</p>
       </div>
     </div>
@@ -571,6 +980,57 @@ export function getHtml(agentName, model) {
     <div id="memory-list"><div class="mem-empty">Select a context to inspect memory.</div></div>
   </aside>
 
+  <!-- ── Kanban view ────────────────────────────────────────────── -->
+  <div id="kanban-view">
+    <div id="kanban-toolbar">
+      <span class="kb-toolbar-title">Board</span>
+      <span id="kb-next-check">—</span>
+      <div class="spacer"></div>
+      <button class="kb-toolbar-btn" id="kb-pause-btn">⏸ Pause</button>
+      <button class="kb-toolbar-btn" id="kb-check-btn">↺ Refresh</button>
+    </div>
+    <div id="kanban-board">
+      <div class="kb-col" data-status="backlog">
+        <div class="kb-col-header">Backlog <span class="kb-count" id="count-backlog">0</span></div>
+        <div class="kb-cards" id="cards-backlog"></div>
+        <div class="kb-add-trigger" id="kb-add-trigger">+ Add task</div>
+        <div class="kb-add-form" id="kb-add-form">
+          <input  class="kb-form-input"    id="kb-title"    placeholder="Task title…">
+          <textarea class="kb-form-textarea" id="kb-desc"   placeholder="Describe what Goose should do…"></textarea>
+          <div class="kb-form-row">
+            <select class="kb-form-select" id="kb-priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+            <input class="kb-form-input" id="kb-tags" placeholder="Tags (comma-separated)">
+          </div>
+          <label class="kb-form-check">
+            <input type="checkbox" id="kb-allow-dangerous">
+            Allow dangerous tools (auto-approve)
+          </label>
+          <div class="kb-form-actions">
+            <button class="kb-action-btn primary" id="kb-submit-btn">Add to Backlog</button>
+            <button class="kb-action-btn"         id="kb-cancel-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div class="kb-col" data-status="ready">
+        <div class="kb-col-header">Ready <span class="kb-count" id="count-ready">0</span></div>
+        <div class="kb-cards" id="cards-ready"></div>
+      </div>
+      <div class="kb-col" data-status="in-progress">
+        <div class="kb-col-header">In Progress <span class="kb-count" id="count-in-progress">0</span></div>
+        <div class="kb-cards" id="cards-in-progress"></div>
+      </div>
+      <div class="kb-col" data-status="done">
+        <div class="kb-col-header">Done <span class="kb-count" id="count-done">0</span></div>
+        <div class="kb-cards" id="cards-done"></div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -597,7 +1057,7 @@ export function getHtml(agentName, model) {
   // ── State ────────────────────────────────────────────────────────
   let thinking = null;
   let isBusy   = false;
-  const toolCards = new Map(); // toolName+timestamp → element
+  const toolCards = new Map();
 
   // ── Status indicator ────────────────────────────────────────────
   function setStatus(state) {
@@ -665,8 +1125,7 @@ export function getHtml(agentName, model) {
 
     const { toolName, args, riskLevel = 'safe' } = data;
     const key = toolName + '-' + Date.now();
-
-    const argsStr  = JSON.stringify(args, null, 2);
+    const argsStr   = JSON.stringify(args, null, 2);
     const riskClass = 'risk-' + riskLevel;
     const riskLabel = riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1);
 
@@ -685,7 +1144,6 @@ export function getHtml(agentName, model) {
     timeline.appendChild(card);
     toolCards.set(toolName, card);
 
-    // Collapsible args
     const argsEl   = card.querySelector('#args-' + key);
     const toggleEl = card.querySelector('#toggle-' + key);
     requestAnimationFrame(() => {
@@ -742,7 +1200,7 @@ export function getHtml(agentName, model) {
       <div class="approval-resolved" style="display:none"></div>
     \`;
 
-    card.querySelector('.btn-approve').addEventListener('click', () => sendApproval(approvalId, true, card));
+    card.querySelector('.btn-approve').addEventListener('click', () => sendApproval(approvalId, true,  card));
     card.querySelector('.btn-deny').addEventListener('click',    () => sendApproval(approvalId, false, card));
 
     timeline.appendChild(card);
@@ -779,16 +1237,11 @@ export function getHtml(agentName, model) {
 
   es.addEventListener('toolCall', e => {
     const data = JSON.parse(e.data);
-    if (data.requiresApproval) {
-      appendApprovalCard(data);
-    } else {
-      appendToolCard(data);
-    }
+    if (data.requiresApproval) appendApprovalCard(data);
+    else appendToolCard(data);
   });
 
-  es.addEventListener('toolResult', e => {
-    updateToolCard(JSON.parse(e.data));
-  });
+  es.addEventListener('toolResult',    e => updateToolCard(JSON.parse(e.data)));
 
   es.addEventListener('agentResponse', e => {
     const { content } = JSON.parse(e.data);
@@ -899,6 +1352,550 @@ export function getHtml(agentName, model) {
     await fetch('/api/memory?contextId=' + encodeURIComponent(target), { method: 'DELETE' });
     loadMemory(target);
   });
+
+  // ─────────────────────────────────────────────────────────────────
+  // ── Kanban Board ─────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+
+  const KANBAN_POLL_INTERVAL = ${kanbanPollInterval};
+  let kanbanTasks          = [];
+  let nextCheckAt          = Date.now() + KANBAN_POLL_INTERVAL;
+  let watcherPaused        = false;
+  const kanbanPendingApprovals = new Map(); // taskId → { approvalId, toolName, args, riskLevel }
+  let dragTaskId    = null;
+
+  // ── Tab switching ─────────────────────────────────────────────────
+  function switchTab(tab) {
+    const isKanban = tab === 'kanban';
+    document.getElementById('main').style.display         = isKanban ? 'none' : 'flex';
+    document.getElementById('memory-panel').style.display = isKanban ? 'none' : 'flex';
+    document.getElementById('kanban-view').style.display  = isKanban ? 'flex' : 'none';
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    if (isKanban) loadKanban();
+  }
+
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // ── Fetch tasks from server ───────────────────────────────────────
+  async function loadKanban() {
+    try {
+      const res = await fetch('/api/kanban');
+      const data = await res.json();
+      kanbanTasks = data.tasks || [];
+      renderKanban();
+    } catch { /* ignore */ }
+  }
+
+  // ── Render the full board ─────────────────────────────────────────
+  function renderKanban() {
+    for (const status of ['backlog', 'ready', 'in-progress', 'done']) {
+      const cardsEl = document.getElementById('cards-' + status);
+      const countEl = document.getElementById('count-' + status);
+      if (!cardsEl || !countEl) continue;
+
+      const tasks = kanbanTasks.filter(t => t.status === status);
+      countEl.textContent = tasks.length;
+
+      // Preserve which cards are expanded
+      const expanded = new Set();
+      cardsEl.querySelectorAll('.kb-card.expanded').forEach(el => expanded.add(el.dataset.id));
+
+      cardsEl.innerHTML = '';
+      for (const task of tasks) {
+        const card = buildCard(task);
+        if (expanded.has(task.id)) card.classList.add('expanded');
+        cardsEl.appendChild(card);
+      }
+    }
+  }
+
+  // ── Build a single card DOM element ───────────────────────────────
+  function buildCard(task) {
+    const card = document.createElement('div');
+    card.className = 'kb-card';
+    card.dataset.id     = task.id;
+    card.dataset.status = task.status;
+
+    const isInProgress = task.status === 'in-progress';
+    const isDone       = task.status === 'done';
+
+    card.draggable = !isInProgress;
+
+    // Title
+    const titleEl = document.createElement('div');
+    titleEl.className = 'kb-card-title';
+    if (isInProgress) {
+      const dot = document.createElement('span');
+      dot.className = 'kb-live-dot';
+      titleEl.appendChild(dot);
+    }
+    titleEl.appendChild(document.createTextNode(task.title));
+
+    // Meta (priority + tags + time)
+    const metaEl = document.createElement('div');
+    metaEl.className = 'kb-card-meta';
+
+    const prioEl = document.createElement('span');
+    prioEl.className = 'kb-priority kb-priority-' + task.priority;
+    prioEl.textContent = task.priority;
+    metaEl.appendChild(prioEl);
+
+    (task.tags || []).forEach(tag => {
+      const tagEl = document.createElement('span');
+      tagEl.className = 'kb-tag';
+      tagEl.textContent = tag;
+      metaEl.appendChild(tagEl);
+    });
+
+    if (isDone && task.completedAt) {
+      const timeEl = document.createElement('span');
+      timeEl.className = 'kb-time-dim';
+      timeEl.textContent = formatTimeAgo(task.completedAt);
+      metaEl.appendChild(timeEl);
+    }
+
+    // Action buttons
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'kb-card-actions';
+
+    function addBtn(label, action, cls) {
+      const btn = document.createElement('button');
+      btn.className = 'kb-action-btn' + (cls ? ' ' + cls : '');
+      btn.textContent = label;
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        handleCardAction(action, task.id, task.contextId);
+      });
+      actionsEl.appendChild(btn);
+    }
+
+    if (task.status === 'backlog') {
+      addBtn('→ Ready',   'promote');
+      addBtn('Edit',      'edit');
+      addBtn('✕',        'delete', 'danger');
+    } else if (task.status === 'ready') {
+      addBtn('← Backlog', 'demote');
+      addBtn('▶ Now',    'trigger', 'primary');
+      addBtn('Edit',      'edit');
+      addBtn('✕',        'delete', 'danger');
+    } else if (isInProgress) {
+      addBtn('👁 View Live', 'view-live');
+    } else if (isDone) {
+      addBtn('↩ Reopen',  'reopen');
+      addBtn('✕',        'delete', 'danger');
+    }
+
+    // Expandable body
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'kb-card-body';
+
+    if (task.description) {
+      const descEl = document.createElement('div');
+      descEl.className = 'kb-card-desc';
+      descEl.textContent = task.description;
+      bodyEl.appendChild(descEl);
+    }
+
+    if (isDone && task.result) {
+      const lbl = document.createElement('div');
+      lbl.className = 'kb-result-label';
+      lbl.textContent = 'Result';
+      const res = document.createElement('div');
+      res.className = 'kb-card-result';
+      res.textContent = task.result.length > 2000 ? task.result.slice(0, 2000) + '…' : task.result;
+      bodyEl.appendChild(lbl);
+      bodyEl.appendChild(res);
+    }
+
+    card.appendChild(titleEl);
+    card.appendChild(metaEl);
+
+    // Approval UI — shown when this in-progress task has a pending dangerous-tool request
+    if (isInProgress && kanbanPendingApprovals.has(task.id)) {
+      const approval = kanbanPendingApprovals.get(task.id);
+
+      const approvalEl = document.createElement('div');
+      approvalEl.className = 'kb-approval';
+
+      const approvalTitle = document.createElement('div');
+      approvalTitle.className = 'kb-approval-title';
+      approvalTitle.innerHTML = '\u26a0\ufe0f <strong>' + approval.toolName + '</strong>';
+      approvalEl.appendChild(approvalTitle);
+
+      const approvalArgs = document.createElement('div');
+      approvalArgs.className = 'kb-approval-args';
+      const argsText = JSON.stringify(approval.args, null, 2);
+      approvalArgs.textContent = argsText.length > 300 ? argsText.slice(0, 300) + '…' : argsText;
+      approvalEl.appendChild(approvalArgs);
+
+      const approvalActions = document.createElement('div');
+      approvalActions.className = 'kb-approval-actions';
+
+      const approveBtn = document.createElement('button');
+      approveBtn.className = 'kb-btn-approve';
+      approveBtn.textContent = '✓ Approve';
+      approveBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        sendKanbanApproval(approval.approvalId, true);
+      });
+
+      const denyBtn = document.createElement('button');
+      denyBtn.className = 'kb-btn-deny';
+      denyBtn.textContent = '✕ Deny';
+      denyBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        sendKanbanApproval(approval.approvalId, false);
+      });
+
+      approvalActions.appendChild(approveBtn);
+      approvalActions.appendChild(denyBtn);
+      approvalEl.appendChild(approvalActions);
+
+      card.appendChild(approvalEl);
+    }
+
+    card.appendChild(actionsEl);
+    card.appendChild(bodyEl);
+
+    // Click to expand/collapse
+    card.addEventListener('click', e => {
+      if (e.target.closest('.kb-action-btn')) return;
+      card.classList.toggle('expanded');
+    });
+
+    // Drag events (in-progress cards are not draggable)
+    if (!isInProgress) {
+      card.addEventListener('dragstart', e => {
+        dragTaskId = task.id;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', () => {
+        dragTaskId = null;
+        card.classList.remove('dragging');
+        document.querySelectorAll('.kb-cards').forEach(c => c.classList.remove('drag-over'));
+      });
+    }
+
+    return card;
+  }
+
+  // ── Drop-zone rules: which columns a status can be dragged to ────
+  const DRAG_RULES = {
+    'backlog':     ['ready'],
+    'ready':       ['backlog'],
+    'in-progress': [],
+    'done':        ['backlog'],
+  };
+
+  document.querySelectorAll('.kb-cards').forEach(cardsEl => {
+    const colStatus = cardsEl.closest('.kb-col').dataset.status;
+
+    cardsEl.addEventListener('dragover', e => {
+      if (!dragTaskId) return;
+      const task = kanbanTasks.find(t => t.id === dragTaskId);
+      if (!task) return;
+      if ((DRAG_RULES[task.status] || []).includes(colStatus)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        cardsEl.classList.add('drag-over');
+      }
+    });
+
+    cardsEl.addEventListener('dragleave', e => {
+      if (!cardsEl.contains(e.relatedTarget)) cardsEl.classList.remove('drag-over');
+    });
+
+    cardsEl.addEventListener('drop', async e => {
+      e.preventDefault();
+      cardsEl.classList.remove('drag-over');
+      if (!dragTaskId) return;
+      const id = dragTaskId;
+      dragTaskId = null;
+      await moveTask(id, colStatus);
+    });
+  });
+
+  // ── Card action dispatch ──────────────────────────────────────────
+  async function handleCardAction(action, taskId, ctxId) {
+    switch (action) {
+      case 'promote':   await moveTask(taskId, 'ready');  break;
+      case 'demote':    await moveTask(taskId, 'backlog'); break;
+      case 'reopen':    await moveTask(taskId, 'backlog'); break;
+      case 'trigger':   await triggerKanbanTask(taskId);  break;
+      case 'edit':      showEditCard(taskId);              break;
+      case 'delete':    await deleteKanbanTask(taskId);   break;
+      case 'view-live': viewLive(ctxId);                  break;
+    }
+  }
+
+  async function moveTask(taskId, newStatus) {
+    const patch = { status: newStatus };
+    if (newStatus === 'backlog') {
+      Object.assign(patch, { startedAt: null, completedAt: null, contextId: null, result: null });
+    }
+    try {
+      await fetch('/api/kanban/' + encodeURIComponent(taskId), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+    } catch { /* SSE will sync */ }
+  }
+
+  async function triggerKanbanTask(taskId) {
+    try {
+      await fetch('/api/kanban/' + encodeURIComponent(taskId) + '/trigger', { method: 'POST' });
+    } catch { /* ignore */ }
+  }
+
+  async function deleteKanbanTask(taskId) {
+    if (!confirm('Delete this task?')) return;
+    try {
+      await fetch('/api/kanban/' + encodeURIComponent(taskId), { method: 'DELETE' });
+    } catch { /* ignore */ }
+  }
+
+  function viewLive(ctxId) {
+    switchTab('chat');
+    if (ctxId) {
+      populateContexts().then(() => {
+        ctxSelect.value = ctxId;
+        loadMemory(ctxId);
+      });
+    }
+  }
+
+  // ── Inline card edit ──────────────────────────────────────────────
+  function showEditCard(taskId) {
+    const task = kanbanTasks.find(t => t.id === taskId);
+    if (!task) return;
+    const cardEl = document.querySelector('.kb-card[data-id="' + taskId + '"]');
+    if (!cardEl) return;
+
+    cardEl.draggable = false;
+    cardEl.innerHTML = '';
+    cardEl.classList.remove('expanded');
+
+    const form = document.createElement('div');
+    form.className = 'kb-edit-form';
+
+    const titleInput = document.createElement('input');
+    titleInput.className = 'kb-form-input';
+    titleInput.value = task.title;
+    titleInput.placeholder = 'Task title…';
+
+    const descTextarea = document.createElement('textarea');
+    descTextarea.className = 'kb-form-textarea';
+    descTextarea.value = task.description || '';
+    descTextarea.placeholder = 'Description…';
+
+    const prioritySelect = document.createElement('select');
+    prioritySelect.className = 'kb-form-select';
+    ['low', 'medium', 'high', 'urgent'].forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p.charAt(0).toUpperCase() + p.slice(1);
+      opt.selected = task.priority === p;
+      prioritySelect.appendChild(opt);
+    });
+
+    const tagsInput = document.createElement('input');
+    tagsInput.className = 'kb-form-input';
+    tagsInput.value = (task.tags || []).join(', ');
+    tagsInput.placeholder = 'Tags (comma-separated)';
+
+    const formRow = document.createElement('div');
+    formRow.className = 'kb-form-row';
+    formRow.appendChild(prioritySelect);
+    formRow.appendChild(tagsInput);
+
+    const allowDangerousLabel = document.createElement('label');
+    allowDangerousLabel.className = 'kb-form-check';
+    const allowDangerousCheck = document.createElement('input');
+    allowDangerousCheck.type    = 'checkbox';
+    allowDangerousCheck.checked = task.allowDangerous || false;
+    allowDangerousLabel.appendChild(allowDangerousCheck);
+    allowDangerousLabel.appendChild(document.createTextNode(' Allow dangerous tools (auto-approve)'));
+
+    const saveBtn   = document.createElement('button');
+    saveBtn.className = 'kb-action-btn primary';
+    saveBtn.textContent = 'Save';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'kb-action-btn';
+    cancelBtn.textContent = 'Cancel';
+
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'kb-form-actions';
+    actionsRow.appendChild(saveBtn);
+    actionsRow.appendChild(cancelBtn);
+
+    form.appendChild(titleInput);
+    form.appendChild(descTextarea);
+    form.appendChild(formRow);
+    form.appendChild(allowDangerousLabel);
+    form.appendChild(actionsRow);
+    cardEl.appendChild(form);
+    titleInput.focus();
+    titleInput.select();
+
+    saveBtn.addEventListener('click', async () => {
+      const title = titleInput.value.trim();
+      if (!title) { titleInput.focus(); return; }
+      const tags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean);
+      try {
+        await fetch('/api/kanban/' + encodeURIComponent(taskId), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            description:    descTextarea.value.trim(),
+            priority:       prioritySelect.value,
+            tags,
+            allowDangerous: allowDangerousCheck.checked,
+          }),
+        });
+      } catch { renderKanban(); }
+    });
+
+    cancelBtn.addEventListener('click', () => renderKanban());
+  }
+
+  // ── Add task form ─────────────────────────────────────────────────
+  const addTrigger = document.getElementById('kb-add-trigger');
+  const addForm    = document.getElementById('kb-add-form');
+
+  addTrigger.addEventListener('click', () => {
+    const isOpen = addForm.classList.toggle('open');
+    if (isOpen) document.getElementById('kb-title').focus();
+  });
+
+  document.getElementById('kb-cancel-btn').addEventListener('click', () => {
+    addForm.classList.remove('open');
+    clearAddForm();
+  });
+
+  document.getElementById('kb-submit-btn').addEventListener('click', async () => {
+    const title = document.getElementById('kb-title').value.trim();
+    if (!title) { document.getElementById('kb-title').focus(); return; }
+    const tags = document.getElementById('kb-tags').value
+      .split(',').map(t => t.trim()).filter(Boolean);
+    try {
+      await fetch('/api/kanban', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description:    document.getElementById('kb-desc').value.trim(),
+          priority:       document.getElementById('kb-priority').value,
+          tags,
+          allowDangerous: document.getElementById('kb-allow-dangerous').checked,
+        }),
+      });
+      addForm.classList.remove('open');
+      clearAddForm();
+    } catch { /* ignore */ }
+  });
+
+  function clearAddForm() {
+    document.getElementById('kb-title').value           = '';
+    document.getElementById('kb-desc').value            = '';
+    document.getElementById('kb-priority').value        = 'medium';
+    document.getElementById('kb-tags').value            = '';
+    document.getElementById('kb-allow-dangerous').checked = false;
+  }
+
+  // ── Watcher controls ─────────────────────────────────────────────
+  const pauseBtn = document.getElementById('kb-pause-btn');
+  const checkBtn = document.getElementById('kb-check-btn');
+
+  pauseBtn.addEventListener('click', () => {
+    watcherPaused = !watcherPaused;
+    pauseBtn.textContent = watcherPaused ? '▶ Resume' : '⏸ Pause';
+    pauseBtn.classList.toggle('paused', watcherPaused);
+  });
+
+  checkBtn.addEventListener('click', () => {
+    fetch('/api/kanban').then(r => r.json()).then(d => {
+      kanbanTasks = d.tasks || [];
+      renderKanban();
+    }).catch(() => {});
+  });
+
+  // ── Countdown timer ───────────────────────────────────────────────
+  function updateCountdown() {
+    const el = document.getElementById('kb-next-check');
+    if (!el) return;
+    const rem = Math.max(0, Math.ceil((nextCheckAt - Date.now()) / 1000));
+    el.textContent = watcherPaused ? 'Watcher paused' : 'Next check in ' + rem + 's';
+  }
+  setInterval(updateCountdown, 1000);
+  updateCountdown();
+
+  // ── Format relative time ──────────────────────────────────────────
+  function formatTimeAgo(iso) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1)  return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24)  return hrs + 'h ago';
+    return Math.floor(hrs / 24) + 'd ago';
+  }
+
+  // ── SSE: board updates broadcast to all clients ───────────────────
+  es.addEventListener('kanbanUpdate', e => {
+    const data = JSON.parse(e.data);
+    kanbanTasks = data.tasks || [];
+    nextCheckAt = Date.now() + KANBAN_POLL_INTERVAL;
+    if (document.getElementById('kanban-view').style.display !== 'none') {
+      renderKanban();
+    }
+  });
+
+  // ── SSE: dangerous-tool approval needed for a kanban task ────────
+  es.addEventListener('kanbanApproval', e => {
+    const data = JSON.parse(e.data);
+    kanbanPendingApprovals.set(data.taskId, data);
+    // Badge the Kanban tab so the user notices
+    const kanbanTab = document.querySelector('.tab[data-tab="kanban"]');
+    if (kanbanTab) kanbanTab.dataset.badge = '!';
+    // Re-render the board if it's visible so the approval card appears
+    if (document.getElementById('kanban-view').style.display !== 'none') {
+      renderKanban();
+    }
+  });
+
+  // ── Send an approval / denial for a kanban-triggered tool ────────
+  async function sendKanbanApproval(approvalId, approved) {
+    const endpoint = approved ? '/api/approve' : '/api/deny';
+    try {
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalId }),
+      });
+    } catch { /* ignore network errors */ }
+
+    // Remove this approval from the pending map
+    for (const [taskId, data] of kanbanPendingApprovals) {
+      if (data.approvalId === approvalId) {
+        kanbanPendingApprovals.delete(taskId);
+        break;
+      }
+    }
+
+    // Clear the tab badge if nothing else is pending
+    if (kanbanPendingApprovals.size === 0) {
+      const kanbanTab = document.querySelector('.tab[data-tab="kanban"]');
+      if (kanbanTab) delete kanbanTab.dataset.badge;
+    }
+
+    renderKanban();
+  }
 
   // ── Init ─────────────────────────────────────────────────────────
   populateContexts();

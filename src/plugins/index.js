@@ -31,7 +31,8 @@ async function tryLoadNpmPackage(packageName, importFn) {
 
 /**
  * Scan node_modules for Goose plugins by naming convention:
- *   @goose-plugins/*    — scoped namespace for official / community plugins
+ *   @goose-tools/*      — legacy scoped namespace for official / community plugins
+ *   @goose-plugins/*    — current scoped namespace for official / community plugins
  *   goose-plugin-*      — unscoped alternative
  *
  * Any installed package matching either pattern is automatically loaded.
@@ -43,14 +44,15 @@ async function loadNpmPlugins({ importFn }) {
 
   if (!fs.existsSync(nodeModulesDir)) return allTools;
 
-  // @goose-plugins/* scoped packages
-  // isDirectory() || isSymbolicLink() — npm-linked packages appear as symlinks,
-  // real npm installs appear as directories. Both must be accepted.
-  const scopeDir = path.join(nodeModulesDir, '@goose-plugins');
-  if (fs.existsSync(scopeDir)) {
+  // Scoped packages may exist in either the legacy @goose-tools namespace
+  // or the current @goose-plugins namespace. Load both for compatibility.
+  for (const scopeName of ['@goose-tools', '@goose-plugins']) {
+    const scopeDir = path.join(nodeModulesDir, scopeName);
+    if (!fs.existsSync(scopeDir)) continue;
+
     const entries = fs.readdirSync(scopeDir, { withFileTypes: true });
     for (const entry of entries.filter(e => e.isDirectory() || e.isSymbolicLink())) {
-      allTools.push(...await tryLoadNpmPackage(`@goose-plugins/${entry.name}`, importFn));
+      allTools.push(...await tryLoadNpmPackage(`${scopeName}/${entry.name}`, importFn));
     }
   }
 
@@ -126,7 +128,8 @@ async function loadLocalPlugins({ importFn }) {
 /**
  * Discover and load all plugins — npm packages first, then local plugins/ dir.
  *
- * npm packages: any installed package matching @goose-plugins/* or goose-plugin-*
+ * npm packages: any installed package matching @goose-tools/*,
+ * @goose-plugins/*, or goose-plugin-*
  * is auto-discovered from node_modules without any configuration.
  * Install the package and restart Goose — it just works.
  *
