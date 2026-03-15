@@ -26,10 +26,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9.39.4",
     "globals": "^15.15.0",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.0"
   },
   "overrides": {
     "@slack/socket-mode": "^2.0.5"

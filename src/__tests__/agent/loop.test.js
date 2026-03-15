@@ -7,7 +7,9 @@ const mockChat = vi.hoisted(() => vi.fn());
 
 // Mock the ollama package — replaces `new Ollama(...)` in loop.js
 vi.mock('ollama', () => ({
-  Ollama: vi.fn().mockImplementation(() => ({ chat: mockChat })),
+  Ollama: vi.fn().mockImplementation(function () {
+    return { chat: mockChat };
+  }),
 }));
 
 // Mock memory so we control history without a real Map

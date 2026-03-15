@@ -15,7 +15,9 @@ const mockReadFileSync  = vi.hoisted(() => vi.fn());
 // ---------------------------------------------------------------------------
 
 vi.mock('ollama', () => ({
-  Ollama: vi.fn().mockImplementation(() => ({ list: mockOllamaList })),
+  Ollama: vi.fn().mockImplementation(function () {
+    return { list: mockOllamaList };
+  }),
 }));
 
 vi.mock('../../agent/memory.js', () => ({
