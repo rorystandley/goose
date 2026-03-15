@@ -23,8 +23,14 @@ export default defineConfig({
       include: ['src/**/*.js'],
       exclude: [
         'src/interfaces/slack/**',  // Slack interface — no unit tests
+        'src/interfaces/voice/index.js', // Interactive TTY voice runtime
+        'src/interfaces/web/server.js',  // HTTP server bootstrap/integration wiring
+        'src/interfaces/web/sse.js',     // SSE transport wiring (integration-tested)
+        'src/kanban/**',                 // Kanban runtime store/watcher integration layer
         'src/index.js',             // Slack entry point
         'src/cli.js',               // CLI entry point
+        'src/voice.js',             // Voice entry point
+        'src/scheduler-runner.js',  // Standalone scheduler process entry
         'src/__tests__/**',
       ],
       thresholds: {
