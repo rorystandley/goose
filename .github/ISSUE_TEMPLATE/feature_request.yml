@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest an enhancement for Goose
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Clear proposals help us review quickly.
+
+  - type: input
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem does this solve?
+      placeholder: I want Goose to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe your preferred approach
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternatives or trade-offs you considered
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Agent loop
+        - Tools
+        - Plugin system
+        - Scheduler
+        - CLI
+        - Slack
+        - Web
+        - Voice
+        - Docs
+        - Testing/CI
+        - Other
+    validations:
+      required: true
