@@ -6,7 +6,7 @@
   </a>
   <img src="https://img.shields.io/badge/node-20-339933?logo=node.js&logoColor=white" alt="Node 20" />
   <img src="https://img.shields.io/badge/tests-vitest-6E9F18?logo=vitest&logoColor=white" alt="Vitest" />
-  <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Frorystandley%2Fgoose%2Fmain%2Fcoverage%2Fcoverage-summary.json&query=%24.total.lines.pct&label=coverage&suffix=%25&color=brightgreen" alt="Coverage" />
+  <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Frorystandley%2Fgoose%2Fdevelop%2Fcoverage%2Fcoverage-summary.json&query=%24.total.lines.pct&label=coverage&suffix=%25&color=brightgreen" alt="Coverage" />
   <img src="https://img.shields.io/badge/llm-ollama-black" alt="Ollama" />
 </p>
 
