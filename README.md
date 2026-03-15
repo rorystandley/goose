@@ -76,6 +76,17 @@ The agent core (`src/agent/`, `src/tools/`) has zero dependencies on any interfa
 
 ---
 
+## Contributing
+
+Contributions are welcome.
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, workflow, and PR expectations
+- Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards
+- See [SECURITY.md](SECURITY.md) for responsible vulnerability disclosure
+- Project license: [MIT](LICENSE)
+
+---
+
 ## Installation
 
 ```bash
