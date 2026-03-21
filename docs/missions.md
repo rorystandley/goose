@@ -205,6 +205,92 @@ This scopes the permission to just the mission that needs it. A `free-thought` o
 
 ---
 
+## Phase-based missions
+
+For multi-step tasks where later steps depend on earlier results, missions support explicit **phases**. The scheduler runs each phase as a separate LLM call, injecting the previous phase's output into the next.
+
+This solves the fundamental limitation of 14B models (qwen3:14b, qwen2.5:14b) which batch all tool calls in a single response — meaning tool call 5 can't use the result of tool call 2.
+
+### Schema
+
+Replace the top-level `task` with a `phases` array:
+
+```json
+{
+  "name": "twitter-marketing",
+  "cron": "0 */2 * * *",
+  "freshContext": true,
+  "contextId": "mission-twitter-marketing",
+  "slackChannel": "C07ABCD1234",
+  "timezone": "Europe/London",
+  "enabled": false,
+  "phases": [
+    {
+      "name": "gather",
+      "task": "Do ALL of the following. After each tool call, paste its raw output and move to the next. Do NOT add commentary.\n1. Call get_datetime.\n2. Call twitter_get_timeline with username 'GooseAIWingMan' and maxResults 5.\n3. Call web_search for 'local AI agents 2026'.",
+      "maxIterations": 5
+    },
+    {
+      "name": "compose",
+      "task": "Using the context below, compose exactly ONE tweet (max 280 chars)...",
+      "injectPreviousResult": true,
+      "noTools": true
+    },
+    {
+      "name": "post",
+      "task": "Call twitter_post_tweet with the exact tweet text below. Do not modify it. Respond with ONLY the tweet URL.\n\nTweet to post:",
+      "injectPreviousResult": true,
+      "allowDangerous": true,
+      "maxIterations": 2
+    }
+  ]
+}
+```
+
+### Phase-specific fields
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Label for this phase (used in logs). |
+| `task` | string | The prompt for this phase — same as a top-level `task`. |
+| `injectPreviousResult` | boolean | Appends the previous phase's text response to this phase's task. |
+| `noTools` | boolean | Forces a text-only response — no tools are available. Ideal for composition/synthesis phases. |
+| `allowDangerous` | boolean | Allow dangerous tools in this phase only. Scoped per-phase, not per-mission. |
+| `maxIterations` | number | Override max tool iterations for this phase. |
+
+### The gather → compose → execute pattern
+
+This is the most effective pattern for phase-based missions:
+
+1. **Gather** — call read-only tools (search, fetch, read). All arguments are static/known, so batching is fine. Instruct the model to return raw outputs only.
+2. **Compose** — receive gathered context via `injectPreviousResult`, produce structured output with no tools (`noTools: true`). This is where reasoning happens.
+3. **Execute** — receive composed content, call action tools. Arguments come from injected text, not from imagined tool results.
+
+Each phase is a clean LLM boundary. The scheduler is the orchestrator, not the model.
+
+### Prompt hardening for gather phases
+
+14B models will summarise, interpret, and draft in gather phases unless strongly constrained. Use this pattern:
+
+```
+Do ALL of the following. After each tool call, paste its raw output and move to the next. Do NOT add commentary, summaries, or drafts.
+1. Call tool_a with arg 'x'.
+2. Call tool_b with arg 'y'.
+```
+
+Even with these constraints, some summarisation may leak through. This is acceptable — the compose phase receives richer context either way.
+
+### When to use phases vs. single-task missions
+
+| Scenario | Approach |
+|---|---|
+| Single tool call (backup, uptime ping) | Single `task` — or `"type": "direct"` when available |
+| Independent tool calls + summary (weather + news) | Phases: gather → compose |
+| Tool result feeds into another tool (search → tweet) | Phases: gather → compose → execute |
+| Pure reflection / free thought | Single `task` with `freshContext: true` |
+
+---
+
 ## Example missions library
 
 Copy any of these into your `data/missions.json`:
@@ -311,6 +397,66 @@ Copy any of these into your `data/missions.json`:
   "enabled": true
 }
 ```
+
+### Phase-based: Morning briefing (gather → compose)
+```json
+{
+  "name": "morning-briefing",
+  "cron": "0 8 * * *",
+  "freshContext": true,
+  "contextId": "mission-morning-briefing",
+  "slackChannel": "YOUR_CHANNEL_ID",
+  "timezone": "Europe/London",
+  "enabled": true,
+  "phases": [
+    {
+      "name": "gather",
+      "task": "Do ALL of the following. After each tool call, paste its raw output and move to the next. Do NOT add commentary or summaries.\n1. Call get_datetime.\n2. Call web_search for 'weather Cannock UK today'.\n3. Call web_search for 'interesting news headlines today UK'.",
+      "maxIterations": 4
+    },
+    {
+      "name": "compose",
+      "task": "Using the raw data below, write a concise morning briefing. Format:\n\n☀️ **Date**: [today's date]\n🌤️ **Weather**: [temperature and conditions]\n📰 **Headlines**: [2-3 interesting headlines with one-line summaries]\n\nKeep it under 200 words. No preamble, no sign-off.",
+      "injectPreviousResult": true,
+      "noTools": true
+    }
+  ]
+}
+```
+> Phases separate data gathering from composition — the compose phase gets all context pre-loaded and focuses purely on formatting.
+
+### Phase-based: Competitive research (gather → analyse → save)
+```json
+{
+  "name": "competitor-research",
+  "cron": "0 9 * * MON",
+  "freshContext": true,
+  "contextId": "mission-competitor-research",
+  "slackChannel": "YOUR_CHANNEL_ID",
+  "timezone": "Europe/London",
+  "enabled": false,
+  "phases": [
+    {
+      "name": "search",
+      "task": "Do ALL of the following. After each tool call, paste its raw output and move to the next. Do NOT add commentary or summaries.\n1. Call web_search for 'local AI agent open source 2026'.\n2. Call web_search for 'ollama agent framework'.\n3. Call web_search for 'on-device AI assistant privacy'.",
+      "maxIterations": 4
+    },
+    {
+      "name": "analyse",
+      "task": "Using the search results below, write a competitive intelligence brief (max 300 words). Structure:\n- **Key players**: Who is building local AI agents? Name specific projects.\n- **Trends**: What patterns are emerging? Cite numbers where possible.\n- **Opportunities**: Where could Goose differentiate?\n\nNo preamble. Start directly with the first heading.",
+      "injectPreviousResult": true,
+      "noTools": true
+    },
+    {
+      "name": "save",
+      "task": "Call remember_fact with the key 'competitor-research-latest' and the full analysis text below as the value. Respond with ONLY what the tool returns.\n\nAnalysis to save:",
+      "injectPreviousResult": true,
+      "maxIterations": 2
+    }
+  ]
+}
+```
+> Three phases: raw search → synthesis → persistence. The analysis is saved as a long-term fact accessible in future conversations.
 
 ### Hourly uptime ping
 ```json

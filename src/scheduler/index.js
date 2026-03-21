@@ -258,16 +258,35 @@ export function startScheduler(notify = null) {
         const startTime = new Date().toISOString();
         log.info('Mission firing', { name: mission.name, contextId });
         try {
-          const result = await runAgent(
-            buildTask(mission),
-            contextId,
-            {
-              ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
-              ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
-              ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
-            },
-          );
-          log.info('Mission complete', { name: mission.name, responseChars: result.length });
+          let result;
+          if (mission.phases) {
+            let previousResult = null;
+            for (const phase of mission.phases) {
+              let phaseTask = phase.task;
+              if (phase.injectPreviousResult && previousResult) {
+                phaseTask = `${phaseTask}\n\nContext from previous phase:\n${previousResult}`;
+              }
+              previousResult = await runAgent(phaseTask, contextId, {
+                ...makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false),
+                ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
+                ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
+                ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
+              });
+              log.info('Phase complete', { mission: mission.name, phase: phase.name, responseChars: previousResult?.length });
+            }
+            result = previousResult;
+          } else {
+            result = await runAgent(
+              buildTask(mission),
+              contextId,
+              {
+                ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
+                ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
+                ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
+              },
+            );
+          }
+          log.info('Mission complete', { name: mission.name, responseChars: result?.length });
 
           if (mission.saveResponseTo) {
             try {
