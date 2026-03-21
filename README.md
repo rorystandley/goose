@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/node-20-339933?logo=node.js&logoColor=white" alt="Node 20" />
   <img src="https://img.shields.io/badge/tests-vitest-6E9F18?logo=vitest&logoColor=white" alt="Vitest" />
   <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Frorystandley%2Fgoose%2Fdevelop%2Fdocs%2Fassets%2Fcoverage-badge.json" alt="Coverage" />
-  <img src="https://img.shields.io/badge/llm-ollama-black" alt="Ollama" />
+  <img src="https://img.shields.io/badge/llm-ollama%20%7C%20vllm--mlx-black" alt="Ollama | vllm-mlx" />
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 
 ---
 
-Goose is a personal autonomous agent powered by a local Ollama LLM. It reasons step by step, uses tools (web search, file I/O, shell commands), and asks for your approval before executing anything risky, all without sending your data to the cloud.
+Goose is a personal autonomous agent powered by a local LLM. It supports two inference backends — [Ollama](docs/ollama.md) (default) and [vllm-mlx](docs/vllm-mlx.md) (Apple Silicon optimised). It reasons step by step, uses tools (web search, file I/O, shell commands), and asks for your approval before executing anything risky, all without sending your data to the cloud.
 
 Whether it's searching the web, running shell commands, or navigating your file system, Goose executes with precision and checks in before anything risky, just like any good wingman would. Every mission runs on your own hardware: no data leaves your network, no cloud sees your prompts, and no subscription stands between you and the objective.
 
@@ -69,6 +69,8 @@ The agent core (`src/agent/`, `src/tools/`) has zero dependencies on any interfa
 
 | Guide | Description |
 |---|---|
+| [docs/ollama.md](docs/ollama.md) | Ollama setup — installation, model selection, multi-model routing |
+| [docs/vllm-mlx.md](docs/vllm-mlx.md) | vllm-mlx setup — Apple Silicon optimised backend with MoE support |
 | [docs/slack-setup.md](docs/slack-setup.md) | Step-by-step Slack app setup |
 | [docs/tools.md](docs/tools.md) | All tools, parameters, risk levels, and search provider setup |
 | [docs/memory.md](docs/memory.md) | How memory works — sliding window, context IDs, long-term fact store |
@@ -94,8 +96,19 @@ git clone <repo>
 cd goose
 npm install
 cp .env.example .env
-# Edit .env — Slack tokens, Ollama config, and at least one search API key
+# Edit .env — Slack tokens, LLM backend config, and at least one search API key
 ```
+
+### LLM backend
+
+Goose needs a local LLM server. Choose one:
+
+| Backend | Install guide | Best for |
+|---|---|---|
+| **[Ollama](docs/ollama.md)** (default) | `brew install ollama && ollama pull qwen3:14b` | Easy setup, wide model support |
+| **[vllm-mlx](docs/vllm-mlx.md)** | `pip install vllm-mlx` (Python 3.10+) | Apple Silicon, faster inference, MoE models |
+
+Ollama works out of the box with zero config. Switch to vllm-mlx by setting `LLM_BACKEND=vllm` in `.env` — see the [vllm-mlx guide](docs/vllm-mlx.md) for details.
 
 ---
 
@@ -241,7 +254,7 @@ import { my_tool } from './example.js';
 export const tools = [ ...existingTools, my_tool ];
 ```
 
-That's it, the agent loop and Ollama tool definitions pick it up automatically.
+That's it, the agent loop and tool definitions pick it up automatically.
 
 ---
 
@@ -264,8 +277,11 @@ No changes to `src/agent/` or `src/tools/` required.
 | `SLACK_BOT_TOKEN` | ✅ | — | Bot OAuth token (`xoxb-...`) |
 | `SLACK_APP_TOKEN` | ✅ | — | App-level token for Socket Mode (`xapp-...`) |
 | `SLACK_SIGNING_SECRET` | ✅ | — | From Basic Information in Slack app settings |
-| `OLLAMA_HOST` | | `http://localhost:11434` | URL of your local Ollama instance |
-| `OLLAMA_MODEL` | | `qwen2.5:14b` | Ollama model to use |
+| `LLM_BACKEND` | | `ollama` | LLM backend — `ollama` or `vllm` ([setup guides](docs/ollama.md)) |
+| `OLLAMA_HOST` | | `http://localhost:11434` | Ollama API endpoint |
+| `OLLAMA_MODEL` | | `qwen2.5:14b` | Default model (used when routing is disabled) |
+| `VLLM_HOST` | | `http://localhost:8000` | vllm-mlx API endpoint (only when `LLM_BACKEND=vllm`) |
+| `VLLM_MODEL` | | — | Model served by vllm-mlx (only when `LLM_BACKEND=vllm`) |
 | `AGENT_NAME` | | `Goose` | Name shown in responses |
 | `MAX_TOOL_ITERATIONS` | | `10` | Max tool calls per task before giving up |
 | `REQUIRE_APPROVAL` | | `true` | Whether dangerous tools need approval |

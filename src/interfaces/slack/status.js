@@ -5,12 +5,10 @@
  * stored facts, and the latest thought entry.
  */
 import fs from 'fs';
-import { Ollama } from 'ollama';
 import config from '../../config.js';
 import { getContextIds, getHistory } from '../../agent/memory.js';
 import { getFacts } from '../../agent/facts.js';
-
-const ollama = new Ollama({ host: config.OLLAMA_HOST });
+import { listModels, getBackendName } from '../../agent/llm.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -35,14 +33,8 @@ function readLastThought() {
   }
 }
 
-async function checkOllama() {
-  try {
-    const res = await ollama.list();
-    const models = (res.models ?? []).map(m => m.name);
-    return { ok: true, models };
-  } catch {
-    return { ok: false, models: [] };
-  }
+async function checkLLMBackend() {
+  return listModels();
 }
 
 function formatUptime(seconds) {
@@ -67,8 +59,8 @@ function timeAgo(isoTimestamp) {
 
 export async function buildStatusBlocks() {
   // Fetch everything in parallel
-  const [ollamaStatus, lastThought] = await Promise.all([
-    checkOllama(),
+  const [llmStatus, lastThought] = await Promise.all([
+    checkLLMBackend(),
     Promise.resolve(readLastThought()),
   ]);
 
@@ -103,9 +95,9 @@ export async function buildStatusBlocks() {
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: ollamaStatus.ok
-        ? `✅ *Ollama* connected · ${ollamaStatus.models.length} model${ollamaStatus.models.length !== 1 ? 's' : ''} available`
-        : `❌ *Ollama* unreachable at \`${config.OLLAMA_HOST}\``,
+      text: llmStatus.ok
+        ? `✅ *${getBackendName()}* connected · ${llmStatus.models.length} model${llmStatus.models.length !== 1 ? 's' : ''} available`
+        : `❌ *${getBackendName()}* unreachable at \`${config.LLM_BACKEND === 'vllm' ? config.VLLM_HOST : config.OLLAMA_HOST}\``,
     },
   });
 

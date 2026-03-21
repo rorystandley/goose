@@ -1,13 +1,12 @@
-import { Ollama } from 'ollama';
 import config from '../config.js';
 import { getHistory, addMessage } from './memory.js';
 import { getFactsAsText } from './facts.js';
-import { toolMap, getOllamaToolDefinitions } from '../tools/index.js';
+import { toolMap, getToolDefinitions } from '../tools/index.js';
 import { selectModel } from './router.js';
+import { chat, makeToolResultMessage } from './llm.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('agent');
-const ollama = new Ollama({ host: config.OLLAMA_HOST });
 
 /**
  * Strip <think>...</think> blocks that some models (e.g. Qwen3) emit when
@@ -90,19 +89,18 @@ export async function runAgent(task, contextId, options = {}) {
   log.debug('Context loaded', { contextId, historyLength: history.length });
 
   const activeToolMap    = subAgentTools ? subAgentTools.toolMap        : toolMap;
-  const toolDefinitions  = subAgentTools ? subAgentTools.toolDefinitions : getOllamaToolDefinitions();
+  const toolDefinitions  = subAgentTools ? subAgentTools.toolDefinitions : getToolDefinitions();
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     log.debug('LLM call', { iteration, messageCount: messages.length, model });
 
     const llmStart = Date.now();
-    let response;
+    let llmResult;
     try {
-      response = await ollama.chat({
+      llmResult = await chat({
         model,
         messages,
         tools: toolDefinitions,
-        think: false,
       });
     } catch (err) {
       log.error('LLM call failed', { iteration, error: err.message });
@@ -112,7 +110,7 @@ export async function runAgent(task, contextId, options = {}) {
     }
 
     const llmMs = Date.now() - llmStart;
-    const assistantMessage = response.message;
+    const assistantMessage = llmResult.rawAssistantMessage;
 
     // Strip thinking tokens from content before they enter the context.
     // Prevents qwen3 reasoning text from accumulating across iterations
@@ -121,18 +119,18 @@ export async function runAgent(task, contextId, options = {}) {
       assistantMessage.content = stripThinking(assistantMessage.content);
     }
 
-    const hasToolCalls = !!assistantMessage.tool_calls?.length;
+    const hasToolCalls = !!llmResult.toolCalls?.length;
 
     log.debug('LLM response received', {
       iteration,
       durationMs: llmMs,
       type: hasToolCalls ? 'tool_calls' : 'text',
-      toolCount: assistantMessage.tool_calls?.length ?? 0,
+      toolCount: llmResult.toolCalls?.length ?? 0,
     });
 
     // No tool calls — final answer
     if (!hasToolCalls) {
-      const content = stripThinking(assistantMessage.content || '(No response)');
+      const content = stripThinking(llmResult.content || '(No response)');
       addMessage(contextId, { role: 'assistant', content });
       log.info('Task complete', {
         contextId,
@@ -147,21 +145,26 @@ export async function runAgent(task, contextId, options = {}) {
     // processes one call at a time. The assistant message pushed to context is also
     // trimmed so the model sees a clean 1-call-per-round history and can actually
     // read tool results (e.g. hook history) before composing dependent steps.
-    const toolCallsThisIteration = isFinite(maxToolCallsPerIteration)
-      ? assistantMessage.tool_calls.slice(0, maxToolCallsPerIteration)
-      : assistantMessage.tool_calls;
+    const normalizedCalls = llmResult.toolCalls;
+    const callsThisIteration = isFinite(maxToolCallsPerIteration)
+      ? normalizedCalls.slice(0, maxToolCallsPerIteration)
+      : normalizedCalls;
 
-    // Push the assistant message (with tool_calls) into the working message array.
-    // Use the trimmed list so the context matches what we actually executed.
-    messages.push({ ...assistantMessage, tool_calls: toolCallsThisIteration });
+    // Push the raw assistant message into context so the LLM sees its own tool_calls.
+    // For trimmed iterations, we rebuild the raw message with only the executed calls.
+    if (isFinite(maxToolCallsPerIteration) && assistantMessage.tool_calls) {
+      messages.push({ ...assistantMessage, tool_calls: assistantMessage.tool_calls.slice(0, maxToolCallsPerIteration) });
+    } else {
+      messages.push(assistantMessage);
+    }
 
     // Track whether any tool was denied this iteration so we can break the loop cleanly
     let anyDenied = false;
 
     // Process each tool call in sequence
-    for (const toolCall of toolCallsThisIteration) {
-      const toolName = toolCall.function?.name;
-      const args = toolCall.function?.arguments ?? {};
+    for (const toolCall of callsThisIteration) {
+      const toolName = toolCall.name;
+      const args = toolCall.arguments ?? {};
 
       const tool = activeToolMap[toolName];
 
@@ -169,7 +172,7 @@ export async function runAgent(task, contextId, options = {}) {
       if (!tool) {
         log.warn('Unknown tool requested', { toolName });
         const errorResult = `Error: unknown tool "${toolName}"`;
-        messages.push({ role: 'tool', content: errorResult });
+        messages.push(makeToolResultMessage(toolCall.id, errorResult));
         onToolResult?.({ toolName, result: errorResult });
         continue;
       }
@@ -185,7 +188,7 @@ export async function runAgent(task, contextId, options = {}) {
           log.info('Tool denied by user', { tool: toolName });
           // Use a very explicit denial message so the LLM doesn't retry or simulate output
           const deniedResult = `The user explicitly denied running "${toolName}". Do NOT attempt this action again or simulate its output. Simply acknowledge that the action was cancelled.`;
-          messages.push({ role: 'tool', content: deniedResult });
+          messages.push(makeToolResultMessage(toolCall.id, deniedResult));
           onToolResult?.({ toolName, result: `"${toolName}" was denied by the user.` });
           continue;
         }
@@ -211,8 +214,8 @@ export async function runAgent(task, contextId, options = {}) {
 
       onToolResult?.({ toolName, result });
 
-      // Append tool result in Ollama's expected format
-      messages.push({ role: 'tool', content: String(result) });
+      // Append tool result in the correct format for the active backend
+      messages.push(makeToolResultMessage(toolCall.id, String(result)));
     }
 
     // If any tool was denied, do one final LLM call WITHOUT tools so it can only
@@ -220,13 +223,8 @@ export async function runAgent(task, contextId, options = {}) {
     if (anyDenied) {
       log.info('Denial finalisation call', { contextId });
       try {
-        const finalResponse = await ollama.chat({
-          model,
-          messages,
-          think: false,
-          // No tools passed — forces a plain text response
-        });
-        const content = stripThinking(finalResponse.message.content || 'Action cancelled.');
+        const finalResult = await chat({ model, messages });
+        const content = stripThinking(finalResult.content || 'Action cancelled.');
         addMessage(contextId, { role: 'assistant', content });
         log.info('Task complete (denied)', { contextId, durationMs: Date.now() - taskStart });
         return content;
