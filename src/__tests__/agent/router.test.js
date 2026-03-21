@@ -4,10 +4,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const mockOllamaChat = vi.hoisted(() => vi.fn());
+const mockLlmChat = vi.hoisted(() => vi.fn());
 
-vi.mock('ollama', () => ({
-  default: { chat: mockOllamaChat },
+vi.mock('../../agent/llm.js', () => ({
+  chat: mockLlmChat,
 }));
 
 // Config is mocked per test group — re-imported after mock is set
@@ -17,6 +17,7 @@ let mockConfig = vi.hoisted(() => ({
   SMART_MODEL:   'smart-model',
   ROUTING_MODEL: '',
   OLLAMA_HOST:   'http://localhost:11434',
+  LLM_BACKEND:   'ollama',
 }));
 
 vi.mock('../../config.js', () => ({ default: mockConfig }));
@@ -41,7 +42,7 @@ beforeEach(() => {
   mockConfig.ROUTING_MODEL = '';
 
   // Default routing model response
-  mockOllamaChat.mockResolvedValue({ message: { content: '5' } });
+  mockLlmChat.mockResolvedValue({ content: '5', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '5' } });
 });
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ describe('routing disabled', () => {
     mockConfig.SMART_MODEL = '';
     const result = await selectModel('What time is it?');
     expect(result).toBe('default-model');
-    expect(mockOllamaChat).not.toHaveBeenCalled();
+    expect(mockLlmChat).not.toHaveBeenCalled();
   });
 
   it('returns OLLAMA_MODEL when only FAST_MODEL is set (partial config)', async () => {
@@ -76,7 +77,7 @@ describe('routing disabled', () => {
     mockConfig.SMART_MODEL   = '';
     mockConfig.ROUTING_MODEL = 'routing-model';
     await selectModel('anything');
-    expect(mockOllamaChat).not.toHaveBeenCalled();
+    expect(mockLlmChat).not.toHaveBeenCalled();
   });
 });
 
@@ -182,86 +183,78 @@ describe('AI routing', () => {
   const AMBIGUOUS = 'Please examine the current state of the deployment and give me a brief overview';
 
   it('calls the routing model for ambiguous tasks with no strong smart signal', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '7' } });
+    mockLlmChat.mockResolvedValue({ content: '7', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '7' } });
     await selectModel(AMBIGUOUS);
-    expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockLlmChat).toHaveBeenCalledWith(expect.objectContaining({
       model: 'routing-model',
     }));
   });
 
   it('score ≥ 6 → smart model', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '8' } });
+    mockLlmChat.mockResolvedValue({ content: '8', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '8' } });
     expect(await selectModel(AMBIGUOUS)).toBe('smart-model');
   });
 
   it('score < 6 → fast model', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '3' } });
+    mockLlmChat.mockResolvedValue({ content: '3', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '3' } });
     expect(await selectModel(AMBIGUOUS)).toBe('fast-model');
   });
 
   it('score exactly 6 → smart model', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '6' } });
+    mockLlmChat.mockResolvedValue({ content: '6', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '6' } });
     expect(await selectModel(AMBIGUOUS)).toBe('smart-model');
   });
 
   it('score exactly 5 → fast model', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '5' } });
+    mockLlmChat.mockResolvedValue({ content: '5', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '5' } });
     expect(await selectModel(AMBIGUOUS)).toBe('fast-model');
   });
 
   it('non-numeric response → falls back to smart model', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: 'seven' } });
+    mockLlmChat.mockResolvedValue({ content: 'seven', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: 'seven' } });
     expect(await selectModel(AMBIGUOUS)).toBe('smart-model');
   });
 
   it('routing model call throws → falls back to smart model', async () => {
-    mockOllamaChat.mockRejectedValue(new Error('Ollama offline'));
+    mockLlmChat.mockRejectedValue(new Error('Ollama offline'));
     expect(await selectModel(AMBIGUOUS)).toBe('smart-model');
   });
 
   it('decimal score (e.g. "7.5") is handled correctly → smart model', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '7.5' } });
+    mockLlmChat.mockResolvedValue({ content: '7.5', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '7.5' } });
     expect(await selectModel(AMBIGUOUS)).toBe('smart-model');
   });
 
   it('includes the task in the routing prompt', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '4' } });
+    mockLlmChat.mockResolvedValue({ content: '4', toolCalls: null, rawAssistantMessage: { role: 'assistant', content: '4' } });
     await selectModel(AMBIGUOUS);
-    const callArgs = mockOllamaChat.mock.calls[0][0];
+    const callArgs = mockLlmChat.mock.calls[0][0];
     const userMessage = callArgs.messages.find(m => m.role === 'user');
     expect(userMessage.content).toContain(AMBIGUOUS);
-  });
-
-  it('passes think: false to the routing model call', async () => {
-    mockOllamaChat.mockResolvedValue({ message: { content: '5' } });
-    await selectModel(AMBIGUOUS);
-    expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
-      think: false,
-    }));
   });
 
   it('smart keyword task bypasses AI routing and returns smart model directly', async () => {
     await selectModel('summarise the deployment logs from last night');
     // hasSmartSignal() matches "summarise" → AI router never called
-    expect(mockOllamaChat).not.toHaveBeenCalled();
+    expect(mockLlmChat).not.toHaveBeenCalled();
   });
 
   it('long task (>150 chars) bypasses AI routing and returns smart model directly', async () => {
     const longTask = 'Please look at the current state of all our microservices and give me a comprehensive overview of each one including their health status and any recent errors that have been logged.';
     await selectModel(longTask);
-    expect(mockOllamaChat).not.toHaveBeenCalled();
+    expect(mockLlmChat).not.toHaveBeenCalled();
   });
 
   it('fast keyword task bypasses AI routing and returns fast model directly', async () => {
     const result = await selectModel('What is 1 + 1');
     // hasFastSignal() matches "what is" → AI router never called
-    expect(mockOllamaChat).not.toHaveBeenCalled();
+    expect(mockLlmChat).not.toHaveBeenCalled();
     expect(result).toBe('fast-model');
   });
 
   it('short task (<50 chars) bypasses AI routing and returns fast model directly', async () => {
     const result = await selectModel('ping the server');
-    expect(mockOllamaChat).not.toHaveBeenCalled();
+    expect(mockLlmChat).not.toHaveBeenCalled();
     expect(result).toBe('fast-model');
   });
 });

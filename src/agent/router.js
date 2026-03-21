@@ -1,5 +1,5 @@
-import ollama from 'ollama';
 import config from '../config.js';
+import { chat as llmChat } from './llm.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('router');
@@ -98,12 +98,11 @@ function hasFastSignal(task) {
 async function aiRoute(task) {
   const prompt = `Rate the complexity of this task on a scale of 1 to 10. Reply with a single number only — no explanation.\n\nTask: ${task}`;
   try {
-    const response = await ollama.chat({
+    const result = await llmChat({
       model: config.ROUTING_MODEL,
       messages: [{ role: 'user', content: prompt }],
-      think: false,
     });
-    const raw   = (response.message?.content || '').trim();
+    const raw   = (result.content || '').trim();
     const score = parseFloat(raw);
     if (isNaN(score)) {
       log.warn('Routing model returned non-numeric score — falling back to smart', { raw });

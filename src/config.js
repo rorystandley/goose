@@ -39,6 +39,10 @@ const config = Object.freeze({
   FAST_MODEL:    process.env.FAST_MODEL    || '',
   SMART_MODEL:   process.env.SMART_MODEL   || '',
   ROUTING_MODEL: process.env.ROUTING_MODEL || '',
+  // LLM backend — 'ollama' (default) or 'vllm' (vllm-mlx, Apple Silicon optimised)
+  LLM_BACKEND: process.env.LLM_BACKEND || 'ollama',
+  VLLM_HOST: process.env.VLLM_HOST || 'http://localhost:8000',
+  VLLM_MODEL: process.env.VLLM_MODEL || '',
   // Voice interface — requires: brew install sox whisper-cpp
   VOICE_WHISPER_MODEL: process.env.VOICE_WHISPER_MODEL || 'base.en',
   // Search providers — add whichever key(s) you have; first configured one is used

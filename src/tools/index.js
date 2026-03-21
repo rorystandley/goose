@@ -39,7 +39,7 @@ export async function initTools() {
 }
 
 // Transform tools into the format Ollama expects for function calling
-export function getOllamaToolDefinitions() {
+export function getToolDefinitions() {
   return tools.map(tool => ({
     type: 'function',
     function: {

@@ -5,11 +5,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 const mockChat = vi.hoisted(() => vi.fn());
 
-// Mock the ollama package — replaces `new Ollama(...)` in loop.js
-vi.mock('ollama', () => ({
-  Ollama: vi.fn().mockImplementation(function () {
-    return { chat: mockChat };
-  }),
+// Mock the LLM provider abstraction — replaces llm.js in loop.js
+vi.mock('../../agent/llm.js', () => ({
+  chat: mockChat,
+  makeToolResultMessage: (id, content) => {
+    if (id) return { role: 'tool', content, tool_call_id: id };
+    return { role: 'tool', content };
+  },
 }));
 
 // Mock memory so we control history without a real Map
@@ -21,7 +23,7 @@ vi.mock('../../agent/memory.js', () => ({
 
 // Mock tools/index.js — two fake tools: one safe, one dangerous
 vi.mock('../../tools/index.js', () => ({
-  getOllamaToolDefinitions: vi.fn(() => []),
+  getToolDefinitions: vi.fn(() => []),
   toolMap: {
     safe_tool: {
       name: 'safe_tool',
@@ -44,15 +46,22 @@ import { toolMap } from '../../tools/index.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a mock LLM response with no tool calls (plain text reply). */
+/** Build a mock normalised LLM response with no tool calls (plain text reply). */
 function textReply(content) {
-  return { message: { content, tool_calls: undefined } };
+  return {
+    content,
+    toolCalls: null,
+    rawAssistantMessage: { role: 'assistant', content, tool_calls: undefined },
+  };
 }
 
-/** Build a mock LLM response requesting one tool call. */
+/** Build a mock normalised LLM response requesting one tool call. */
 function toolReply(toolName, args = {}) {
   return {
-    message: {
+    content: '',
+    toolCalls: [{ name: toolName, arguments: args, id: null }],
+    rawAssistantMessage: {
+      role: 'assistant',
       content: '',
       tool_calls: [{ function: { name: toolName, arguments: args } }],
     },

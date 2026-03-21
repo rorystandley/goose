@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { tools, toolMap, getOllamaToolDefinitions, buildHelpBlocks } from '../../tools/index.js';
+import { tools, toolMap, getToolDefinitions, buildHelpBlocks } from '../../tools/index.js';
 
 describe('tools array', () => {
   it('exports a non-empty array of tools', () => {
@@ -45,14 +45,14 @@ describe('toolMap', () => {
   });
 });
 
-describe('getOllamaToolDefinitions', () => {
+describe('getToolDefinitions', () => {
   it('returns an array with one entry per tool', () => {
-    const defs = getOllamaToolDefinitions();
+    const defs = getToolDefinitions();
     expect(defs).toHaveLength(tools.length);
   });
 
   it('each definition has type "function" and a function object', () => {
-    for (const def of getOllamaToolDefinitions()) {
+    for (const def of getToolDefinitions()) {
       expect(def.type).toBe('function');
       expect(typeof def.function).toBe('object');
       expect(typeof def.function.name).toBe('string');
@@ -62,7 +62,7 @@ describe('getOllamaToolDefinitions', () => {
   });
 
   it('tool names in definitions match the tools array', () => {
-    const defNames = getOllamaToolDefinitions().map(d => d.function.name);
+    const defNames = getToolDefinitions().map(d => d.function.name);
     const toolNames = tools.map(t => t.name);
     expect(defNames).toEqual(toolNames);
   });
