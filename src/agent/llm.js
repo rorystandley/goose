@@ -107,9 +107,15 @@ let _callCounter = 0;
 async function _chatVllm({ model, messages, tools }) {
   const effectiveModel = model || config.VLLM_MODEL || config.OLLAMA_MODEL;
 
+  // Qwen3 models default to "thinking" mode which generates a long internal
+  // chain-of-thought before every response, dramatically slowing inference.
+  // Prepend /no_think to the first user/system message to disable it
+  // (equivalent to Ollama's `think: false`).
+  const patchedMessages = _suppressThinking(messages);
+
   const params = {
     model: effectiveModel,
-    messages,
+    messages: patchedMessages,
     stream: false,
   };
 
@@ -136,10 +142,38 @@ async function _chatVllm({ model, messages, tools }) {
   if (msg.tool_calls?.length) rawAssistantMessage.tool_calls = msg.tool_calls;
 
   return {
-    content: msg.content || null,
+    content: _stripThinkTags(msg.content) || null,
     toolCalls,
     rawAssistantMessage,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Qwen3 thinking-mode suppression
+// ---------------------------------------------------------------------------
+
+/**
+ * Prepend /no_think to the first message to disable Qwen3's extended thinking.
+ * Returns a shallow copy — original messages array is not mutated.
+ */
+function _suppressThinking(messages) {
+  if (!messages?.length) return messages;
+  const first = messages[0];
+  if (typeof first.content === 'string' && first.content.startsWith('/no_think')) {
+    return messages; // already suppressed
+  }
+  const patched = [...messages];
+  patched[0] = { ...first, content: `/no_think\n${first.content ?? ''}` };
+  return patched;
+}
+
+/**
+ * Strip residual <think>...</think> tags from response content.
+ * Even with /no_think the model emits an empty <think>\n\n</think> block.
+ */
+function _stripThinkTags(content) {
+  if (!content) return content;
+  return content.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
 }
 
 /**
