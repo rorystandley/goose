@@ -16,19 +16,21 @@ Key advantages over Ollama:
 
 ---
 
-## Why Qwen3.5-35B-A3B?
+## Model Selection
 
-The recommended model for vllm-mlx is **Qwen3.5-35B-A3B** — a Mixture-of-Experts (MoE) model:
+Choose a model based on your unified memory:
 
-| Spec | Value |
-|---|---|
-| Total parameters | 35B |
-| Active parameters per token | ~3B |
-| VRAM (4-bit) | ~9 GB |
-| Speed | Comparable to a 3B dense model |
-| Quality | Significantly better than 14B dense models |
+| Model | Weights | Min RAM | Quality | Speed |
+|---|---|---|---|---|
+| `mlx-community/Qwen3-14B-4bit` | ~9 GB | **24 GB** | Strong reasoning, good tool calling | ~35 tok/s |
+| `mlx-community/Qwen3.5-35B-A3B-4bit` | ~9 GB | **36 GB+** | Best quality (MoE, 3B active) | ~50 tok/s |
+| `mlx-community/Qwen3-8B-4bit` | ~5 GB | **16 GB** | Good for simple tasks | ~60 tok/s |
 
-The MoE architecture means only 3B parameters activate per forward pass, so it runs at small-model speeds with large-model quality. This is the key advantage — you get 35B-class reasoning at 3B-class latency.
+**24 GB machines (M4, M3 Pro, M2 Pro):** Use **Qwen3-14B-4bit**. The 35B MoE model's weights fit in memory (~9 GB) but the activations and KV cache push total usage past 24 GB during inference, causing a Metal OOM crash.
+
+**36 GB+ machines (M4 Pro, M3 Max, M2 Max):** Use **Qwen3.5-35B-A3B-4bit** for the best quality. The MoE architecture means only 3B parameters activate per forward pass — small-model speeds with large-model quality.
+
+> **Warning:** Running a model that exceeds your available memory will crash vllm-mlx (and potentially freeze your machine). Metal reports `Insufficient Memory (kIOGPUCommandBufferCallbackErrorOutOfMemory)`. If this happens, force-quit vllm-mlx and switch to a smaller model.
 
 ---
 
@@ -76,8 +78,8 @@ vllm-mlx --help
 # Activate the virtual environment
 source ~/.venvs/vllm/bin/activate
 
-# Start serving Qwen3.5-35B-A3B with tool calling enabled
-vllm-mlx serve mlx-community/Qwen3.5-35B-A3B-4bit \
+# Start serving (use the model that fits your RAM — see Model Selection above)
+vllm-mlx serve mlx-community/Qwen3-14B-4bit \
   --enable-auto-tool-choice \
   --tool-call-parser qwen \
   --host 0.0.0.0 \
@@ -115,7 +117,7 @@ In your `.env` file:
 # Switch to vllm-mlx backend
 LLM_BACKEND=vllm
 VLLM_HOST=http://localhost:8000
-VLLM_MODEL=mlx-community/Qwen3.5-35B-A3B-4bit
+VLLM_MODEL=mlx-community/Qwen3-14B-4bit    # or Qwen3.5-35B-A3B-4bit on 36GB+ machines
 ```
 
 That's it. All existing functionality — missions, tools, Slack, CLI — works identically. The provider abstraction in `src/agent/llm.js` handles the API format differences automatically.
@@ -142,7 +144,7 @@ For production, uncomment the vllm process in `ecosystem.config.cjs`:
 {
   name: 'vllm',
   script: 'vllm-mlx',
-  args: 'serve mlx-community/Qwen3.5-35B-A3B-4bit --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port 8000',
+  args: 'serve mlx-community/Qwen3-14B-4bit --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port 8000',
   interpreter: 'none',
   autorestart: true,
   restart_delay: 5000,
@@ -194,11 +196,15 @@ Only one backend needs to be running at a time. There's no need to have both Oll
 
 Make sure you started vllm-mlx with both `--enable-auto-tool-choice` and `--tool-call-parser qwen` (for Qwen models). Without these flags, the model won't generate tool calls correctly.
 
-### Out of memory
+### Out of memory / machine freeze
 
-- Use `--max-model-len 4096` to reduce context window size
-- Close other GPU-intensive apps
-- Consider a smaller quantisation: `mlx-community/Qwen3.5-35B-A3B-8bit` uses more memory but gives better quality; `4bit` is the recommended balance
+The Metal GPU will crash with `Insufficient Memory (kIOGPUCommandBufferCallbackErrorOutOfMemory)` if the model exceeds available unified memory. This can freeze your entire machine.
+
+**Fix:**
+1. Force-quit vllm-mlx: `pkill -9 -f "vllm-mlx"`
+2. Switch to a smaller model (see [Model Selection](#model-selection))
+3. Close other memory-heavy apps before restarting
+4. Use `--cache-memory-percent 0.10` to limit KV cache memory
 
 ### Model download fails
 
@@ -209,8 +215,19 @@ The model downloads from Hugging Face on first run. If it fails:
 pip install huggingface-hub
 
 # Download manually
-huggingface-cli download mlx-community/Qwen3.5-35B-A3B-4bit
+huggingface-cli download mlx-community/Qwen3-14B-4bit
 ```
+
+### Machine froze or crashed
+
+If vllm-mlx crashes repeatedly or is killed without cleanup, zombie processes can accumulate and consume all available memory, freezing the machine. After a hard reboot, the Metal compiler service (`MTLCompilerService`) may remain broken, causing vllm-mlx to fail with `Unable to build metal library from source`.
+
+**Fix:**
+1. Kill all vllm-mlx processes: `pkill -9 -f "vllm-mlx"`
+2. If Metal errors persist, **reboot** — this is the only way to reset `MTLCompilerService`
+3. After reboot, verify with `pm2 start ecosystem.config.cjs` or start manually
+
+**Prevention:** Always stop vllm-mlx cleanly (`pm2 stop vllm` or Ctrl+C) rather than killing it. Avoid running multiple instances simultaneously.
 
 ### Slow first response
 

@@ -21,7 +21,7 @@ module.exports = {
     // {
     //   name: 'vllm',
     //   script: 'vllm-mlx',
-    //   args: 'serve mlx-community/Qwen3.5-35B-A3B-4bit --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port 8000',
+    //   args: 'serve mlx-community/Qwen3-14B-4bit --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port 8000',
     //   interpreter: 'none',
     //   autorestart: true,
     //   restart_delay: 5000,
