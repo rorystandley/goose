@@ -29,6 +29,11 @@ vi.mock('node-cron', () => ({
 const mockRunAgent = vi.hoisted(() => vi.fn());
 vi.mock('../../agent/loop.js', () => ({ runAgent: mockRunAgent }));
 
+vi.mock('../../tools/index.js', () => ({
+  initTools: vi.fn().mockResolvedValue(undefined),
+  toolMap: {},
+}));
+
 vi.mock('../../config.js', () => ({
   default: {
     MISSIONS_PATH: '/tmp/missions.json',
@@ -77,7 +82,7 @@ const phasedMission = {
 
 async function runCronCallback(mission, notifyFn = null) {
   mockReadFileSync.mockReturnValue(missionsJson([mission]));
-  startScheduler(notifyFn);
+  await startScheduler(notifyFn);
   const cronFn = mockSchedule.mock.calls[0][1];
   await cronFn();
 }

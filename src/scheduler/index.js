@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
 import { runAgent } from '../agent/loop.js';
+import { toolMap, initTools } from '../tools/index.js';
 import { createLogger } from '../logger.js';
 import config from '../config.js';
 
@@ -174,6 +175,27 @@ export function buildTask(mission) {
 }
 
 // ---------------------------------------------------------------------------
+// Direct tool execution — bypass the LLM entirely
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute a tool directly by name, without involving the LLM.
+ *
+ * Used for deterministic missions (e.g. backups) where the tool does all the
+ * work and the model adds nothing. Set `"direct": "tool_name"` in the mission
+ * config. Optional `"directArgs": { ... }` passes arguments to the tool.
+ *
+ * @param {string} toolName   Name of the registered tool (built-in or plugin)
+ * @param {object} args       Arguments to pass to the tool's execute()
+ * @returns {string}          The tool's return value
+ */
+async function executeDirect(toolName, args = {}) {
+  const tool = toolMap[toolName];
+  if (!tool) throw new Error(`Direct tool not found: ${toolName}`);
+  return await tool.execute(args);
+}
+
+// ---------------------------------------------------------------------------
 // Headless callbacks — no human in the loop
 // ---------------------------------------------------------------------------
 
@@ -221,7 +243,10 @@ export function makeSchedulerCallbacks(missionName, allowDangerous = false) {
  *                                Called after each mission completes when mission.slackChannel is set.
  * @returns {Array}  Array of registered ScheduledTask objects.
  */
-export function startScheduler(notify = null) {
+export async function startScheduler(notify = null) {
+  // Ensure tool registry is populated (needed for direct missions)
+  await initTools();
+
   const missions = loadMissions();
 
   if (missions.length === 0) {
@@ -259,7 +284,12 @@ export function startScheduler(notify = null) {
         log.info('Mission firing', { name: mission.name, contextId });
         try {
           let result;
-          if (mission.phases) {
+          if (mission.direct) {
+            // Direct tool execution — no LLM involved
+            log.info('Direct tool execution', { name: mission.name, tool: mission.direct });
+            result = await executeDirect(mission.direct, mission.directArgs ?? {});
+            log.info('Direct tool complete', { name: mission.name, resultChars: result?.length });
+          } else if (mission.phases) {
             let previousResult = null;
             for (const phase of mission.phases) {
               let phaseTask = phase.task;

@@ -30,6 +30,11 @@ vi.mock('node-cron', () => ({
 const mockRunAgent = vi.hoisted(() => vi.fn());
 vi.mock('../../agent/loop.js', () => ({ runAgent: mockRunAgent }));
 
+vi.mock('../../tools/index.js', () => ({
+  initTools: vi.fn().mockResolvedValue(undefined),
+  toolMap: {},
+}));
+
 vi.mock('../../config.js', () => ({
   default: {
     MISSIONS_PATH: '/tmp/missions.json',
@@ -96,37 +101,37 @@ describe('loadMissions', () => {
 // startScheduler — mission registration
 // ---------------------------------------------------------------------------
 describe('startScheduler — registration', () => {
-  it('returns empty array and logs when no missions are loaded', () => {
-    const tasks = startScheduler();
+  it('returns empty array and logs when no missions are loaded', async () => {
+    const tasks = await startScheduler();
     expect(tasks).toEqual([]);
     expect(mockSchedule).not.toHaveBeenCalled();
   });
 
-  it('skips disabled missions', () => {
+  it('skips disabled missions', async () => {
     mockReadFileSync.mockReturnValue(missionsJson([{ ...sampleMission, enabled: false }]));
-    const tasks = startScheduler();
+    const tasks = await startScheduler();
     expect(tasks).toEqual([]);
     expect(mockSchedule).not.toHaveBeenCalled();
   });
 
-  it('skips missions with an invalid cron expression', () => {
+  it('skips missions with an invalid cron expression', async () => {
     mockValidate.mockReturnValue(false);
     mockReadFileSync.mockReturnValue(missionsJson([sampleMission]));
-    const tasks = startScheduler();
+    const tasks = await startScheduler();
     expect(tasks).toEqual([]);
     expect(mockSchedule).not.toHaveBeenCalled();
   });
 
-  it('registers one cron job for a valid enabled mission', () => {
+  it('registers one cron job for a valid enabled mission', async () => {
     mockReadFileSync.mockReturnValue(missionsJson([sampleMission]));
-    const tasks = startScheduler();
+    const tasks = await startScheduler();
     expect(tasks).toHaveLength(1);
     expect(mockSchedule).toHaveBeenCalledOnce();
   });
 
-  it('passes the correct cron expression and timezone to node-cron', () => {
+  it('passes the correct cron expression and timezone to node-cron', async () => {
     mockReadFileSync.mockReturnValue(missionsJson([sampleMission]));
-    startScheduler();
+    await startScheduler();
     expect(mockSchedule).toHaveBeenCalledWith(
       '0 8 * * MON-FRI',
       expect.any(Function),
@@ -136,7 +141,7 @@ describe('startScheduler — registration', () => {
 
   it('uses mission.contextId when provided', async () => {
     mockReadFileSync.mockReturnValue(missionsJson([sampleMission]));
-    startScheduler();
+    await startScheduler();
     // Invoke the registered cron callback
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
@@ -150,7 +155,7 @@ describe('startScheduler — registration', () => {
   it('freshContext:true generates a unique contextId per run (not the bare contextId)', async () => {
     const mission = { ...sampleMission, freshContext: true };
     mockReadFileSync.mockReturnValue(missionsJson([mission]));
-    startScheduler();
+    await startScheduler();
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
     const calledContextId = mockRunAgent.mock.calls[0][1];
@@ -161,7 +166,7 @@ describe('startScheduler — registration', () => {
   it('passes maxIterations to runAgent when mission.maxIterations is set', async () => {
     const mission = { ...sampleMission, maxIterations: 15 };
     mockReadFileSync.mockReturnValue(missionsJson([mission]));
-    startScheduler();
+    await startScheduler();
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
     const calledOptions = mockRunAgent.mock.calls[0][2];
@@ -170,7 +175,7 @@ describe('startScheduler — registration', () => {
 
   it('does NOT include maxIterations in runAgent options when mission.maxIterations is not set', async () => {
     mockReadFileSync.mockReturnValue(missionsJson([sampleMission]));
-    startScheduler();
+    await startScheduler();
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
     const calledOptions = mockRunAgent.mock.calls[0][2];
@@ -180,7 +185,7 @@ describe('startScheduler — registration', () => {
   it('falls back to mission-<name> contextId when contextId is not set', async () => {
     const mission = { ...sampleMission, contextId: undefined };
     mockReadFileSync.mockReturnValue(missionsJson([mission]));
-    startScheduler();
+    await startScheduler();
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
     expect(mockRunAgent).toHaveBeenCalledWith(
@@ -190,10 +195,10 @@ describe('startScheduler — registration', () => {
     );
   });
 
-  it('defaults to UTC timezone when timezone is not set', () => {
+  it('defaults to UTC timezone when timezone is not set', async () => {
     const mission = { ...sampleMission, timezone: undefined };
     mockReadFileSync.mockReturnValue(missionsJson([mission]));
-    startScheduler();
+    await startScheduler();
     expect(mockSchedule).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(Function),
@@ -208,7 +213,7 @@ describe('startScheduler — registration', () => {
 describe('startScheduler — cron callback', () => {
   async function runCronCallback(mission = sampleMission, notifyFn = null) {
     mockReadFileSync.mockReturnValue(missionsJson([mission]));
-    startScheduler(notifyFn);
+    await startScheduler(notifyFn);
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
   }
@@ -266,7 +271,7 @@ describe('startScheduler — postLastThought', () => {
       return readResult;
     });
     const notify = vi.fn().mockResolvedValue(undefined);
-    startScheduler(notify);
+    await startScheduler(notify);
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
     return notify;
@@ -473,7 +478,7 @@ describe('buildTask — transform', () => {
 describe('startScheduler — saveResponseTo', () => {
   async function runWithSaveResponseTo(mission) {
     mockReadFileSync.mockReturnValue(missionsJson([mission]));
-    startScheduler();
+    await startScheduler();
     const cronFn = mockSchedule.mock.calls[0][1];
     await cronFn();
   }
@@ -513,6 +518,7 @@ describe('startScheduler — saveResponseTo', () => {
 describe('makeSchedulerCallbacks', () => {
   it('approves safe tools (requiresApproval=false) regardless of SCHEDULER_ALLOW_DANGEROUS', async () => {
     vi.resetModules();
+    vi.doMock('../../tools/index.js', () => ({ initTools: vi.fn().mockResolvedValue(undefined), toolMap: {} }));
     vi.doMock('../../config.js', () => ({
       default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: false },
     }));
@@ -523,6 +529,7 @@ describe('makeSchedulerCallbacks', () => {
 
   it('denies dangerous tools when SCHEDULER_ALLOW_DANGEROUS=false', async () => {
     vi.resetModules();
+    vi.doMock('../../tools/index.js', () => ({ initTools: vi.fn().mockResolvedValue(undefined), toolMap: {} }));
     vi.doMock('../../config.js', () => ({
       default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: false },
     }));
@@ -533,6 +540,7 @@ describe('makeSchedulerCallbacks', () => {
 
   it('approves dangerous tools when SCHEDULER_ALLOW_DANGEROUS=true', async () => {
     vi.resetModules();
+    vi.doMock('../../tools/index.js', () => ({ initTools: vi.fn().mockResolvedValue(undefined), toolMap: {} }));
     vi.doMock('../../config.js', () => ({
       default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: true },
     }));
@@ -543,6 +551,7 @@ describe('makeSchedulerCallbacks', () => {
 
   it('approves dangerous tools when mission allowDangerous=true, global flag false', async () => {
     vi.resetModules();
+    vi.doMock('../../tools/index.js', () => ({ initTools: vi.fn().mockResolvedValue(undefined), toolMap: {} }));
     vi.doMock('../../config.js', () => ({
       default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: false },
     }));
@@ -553,6 +562,7 @@ describe('makeSchedulerCallbacks', () => {
 
   it('denies dangerous tools when mission allowDangerous=false and global flag false', async () => {
     vi.resetModules();
+    vi.doMock('../../tools/index.js', () => ({ initTools: vi.fn().mockResolvedValue(undefined), toolMap: {} }));
     vi.doMock('../../config.js', () => ({
       default: { MISSIONS_PATH: '/tmp/missions.json', SCHEDULER_ALLOW_DANGEROUS: false },
     }));

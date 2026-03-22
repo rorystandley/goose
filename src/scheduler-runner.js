@@ -21,7 +21,7 @@ const app = new App({
   try {
     await initTools();
 
-    startScheduler(async (channel, missionName, result) => {
+    await startScheduler(async (channel, missionName, result) => {
       await app.client.chat.postMessage({
         channel,
         text: `🪿 *Mission: ${missionName}*\n\n${result}`,
