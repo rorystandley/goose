@@ -7,6 +7,7 @@ const mockReadFile  = vi.hoisted(() => vi.fn());
 const mockWriteFile = vi.hoisted(() => vi.fn());
 const mockReaddir   = vi.hoisted(() => vi.fn());
 const mockStat      = vi.hoisted(() => vi.fn());
+const mockMkdir     = vi.hoisted(() => vi.fn());
 
 vi.mock('fs/promises', () => ({
   default: {
@@ -14,6 +15,7 @@ vi.mock('fs/promises', () => ({
     writeFile: mockWriteFile,
     readdir:   mockReaddir,
     stat:      mockStat,
+    mkdir:     mockMkdir,
   },
 }));
 
