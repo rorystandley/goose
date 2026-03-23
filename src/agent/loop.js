@@ -60,18 +60,19 @@ Use record_thought when something strikes you while you work — a curious patte
  *
  * @param {string} task - The user's request
  * @param {string} contextId - Channel or user ID for memory scoping
- * @param {{ onToolCall: Function, onToolResult: Function, maxIterations?: number }} options
+ * @param {{ onToolCall: Function, onToolResult: Function, maxIterations?: number, model?: string }} options
  *   - onToolCall({ toolName, args, requiresApproval }) → Promise<boolean>
  *   - onToolResult({ toolName, result }) → void
  *   - maxIterations — override the global MAX_TOOL_ITERATIONS for this run
+ *   - model — force a specific model, bypassing the router
  * @returns {Promise<string>} The final assistant response
  */
 export async function runAgent(task, contextId, options = {}) {
-  const { onToolCall, onToolResult, maxIterations = config.MAX_TOOL_ITERATIONS, subAgentTools, maxToolCallsPerIteration = Infinity } = options;
+  const { onToolCall, onToolResult, maxIterations = config.MAX_TOOL_ITERATIONS, subAgentTools, maxToolCallsPerIteration = Infinity, model: modelOverride } = options;
   const taskStart = Date.now();
 
   // Select the model for this task (honours FAST_MODEL / SMART_MODEL routing if configured)
-  const model = await selectModel(task);
+  const model = modelOverride || await selectModel(task);
 
   log.info('Task started', { task: task.slice(0, 120), contextId, model });
 

@@ -46,7 +46,7 @@ vi.mock('../../agent/memory.js', () => ({
 // ---------------------------------------------------------------------------
 import readline from 'readline';
 import os from 'os';
-import { banner, makeCallbacks, runCLI } from '../../interfaces/cli/index.js';
+import { banner, makeCallbacks, runCLI, runEngage, engageBanner } from '../../interfaces/cli/index.js';
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -433,5 +433,112 @@ describe('runCLI — REPL mode', () => {
   it('close event calls process.exit(0)', async () => {
     await closeHandler();
     expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// engageBanner
+// ---------------------------------------------------------------------------
+describe('engageBanner', () => {
+  it('returns a string containing the mission text', () => {
+    const result = engageBanner('Analyze logs', 'smart-model', 'engage-123');
+    expect(result).toContain('Analyze logs');
+  });
+
+  it('contains the model name', () => {
+    const result = engageBanner('task', 'qwen2.5:32b', 'engage-123');
+    expect(result).toContain('qwen2.5:32b');
+  });
+
+  it('contains the context ID', () => {
+    const result = engageBanner('task', 'model', 'engage-999');
+    expect(result).toContain('engage-999');
+  });
+
+  it('contains ENGAGE in the output', () => {
+    const result = engageBanner('task', 'model', 'ctx');
+    expect(result).toContain('ENGAGE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runEngage
+// ---------------------------------------------------------------------------
+describe('runEngage', () => {
+  it('calls runAgent with the mission text as task', async () => {
+    mockRunAgent.mockResolvedValue('Mission result.');
+    runEngage('Analyze the logs');
+    await vi.waitFor(() => expect(mockRunAgent).toHaveBeenCalled());
+    expect(mockRunAgent.mock.calls[0][0]).toBe('Analyze the logs');
+  });
+
+  it('uses an engage-prefixed contextId', async () => {
+    mockRunAgent.mockResolvedValue('Done.');
+    runEngage('task');
+    await vi.waitFor(() => expect(mockRunAgent).toHaveBeenCalled());
+    const contextId = mockRunAgent.mock.calls[0][1];
+    expect(contextId).toMatch(/^engage-\d+$/);
+  });
+
+  it('passes a model option in the options', async () => {
+    mockRunAgent.mockResolvedValue('Done.');
+    runEngage('task');
+    await vi.waitFor(() => expect(mockRunAgent).toHaveBeenCalled());
+    const options = mockRunAgent.mock.calls[0][2];
+    expect(options.model).toBeDefined();
+    expect(typeof options.model).toBe('string');
+  });
+
+  it('passes elevated maxIterations (at least 20)', async () => {
+    mockRunAgent.mockResolvedValue('Done.');
+    runEngage('task');
+    await vi.waitFor(() => expect(mockRunAgent).toHaveBeenCalled());
+    const options = mockRunAgent.mock.calls[0][2];
+    expect(options.maxIterations).toBeGreaterThanOrEqual(20);
+  });
+
+  it('prints the engage banner containing the mission', async () => {
+    mockRunAgent.mockResolvedValue('Done.');
+    runEngage('Scan the network');
+    await vi.waitFor(() => expect(mockRunAgent).toHaveBeenCalled());
+    const output = consoleSpy.mock.calls.map(c => c.join(' ')).join(' ');
+    expect(output).toContain('ENGAGE');
+    expect(output).toContain('Scan the network');
+  });
+
+  it('prints "Mission complete" on success', async () => {
+    mockRunAgent.mockResolvedValue('All done.');
+    runEngage('task');
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalled());
+    const output = consoleSpy.mock.calls.map(c => c.join(' ')).join(' ');
+    expect(output).toContain('Mission complete');
+  });
+
+  it('prints elapsed time on success', async () => {
+    mockRunAgent.mockResolvedValue('Done.');
+    runEngage('task');
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalled());
+    const output = consoleSpy.mock.calls.map(c => c.join(' ')).join(' ');
+    expect(output).toMatch(/\d+\.\d+s/);
+  });
+
+  it('calls process.exit(0) on success', async () => {
+    mockRunAgent.mockResolvedValue('Done.');
+    runEngage('task');
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+  });
+
+  it('calls process.exit(1) on error', async () => {
+    mockRunAgent.mockRejectedValue(new Error('LLM offline'));
+    runEngage('task');
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
+  });
+
+  it('prints error message on failure', async () => {
+    mockRunAgent.mockRejectedValue(new Error('Connection lost'));
+    runEngage('task');
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalled());
+    const output = consoleErrSpy.mock.calls.map(c => c.join(' ')).join(' ');
+    expect(output).toContain('Connection lost');
   });
 });

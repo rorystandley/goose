@@ -75,6 +75,8 @@ export const write_file = {
         return `Access denied: path is outside allowed directories (${config.ALLOWED_PATHS.join(', ')})`;
       }
       const resolved = path.resolve(expandTilde(filePath));
+      const dir = path.dirname(resolved);
+      await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(resolved, content, 'utf8');
       return `File written successfully: ${resolved}`;
     } catch (err) {

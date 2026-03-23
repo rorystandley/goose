@@ -22,6 +22,7 @@ const c = {
   yellow: '\x1b[33m',
   red:    '\x1b[31m',
   orange: '\x1b[38;5;208m',
+  cyan:   '\x1b[36m',
 };
 
 // ---------------------------------------------------------------------------
@@ -158,6 +159,56 @@ async function repl() {
     console.log(`\n${c.dim}Goodbye, Maverick.${c.reset}\n`);
     process.exit(0);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Engage banner — printed at engage startup
+// ---------------------------------------------------------------------------
+export function engageBanner(mission, model, contextId) {
+  const line = '━'.repeat(45);
+  return [
+    '',
+    `${c.orange}🛩️  GOOSE ENGAGE — Full Afterburner${c.reset}`,
+    `${c.dim}${line}${c.reset}`,
+    `${c.dim}Model   : ${model} (SMART)`,
+    `Mission : ${mission}`,
+    `Context : ${contextId}`,
+    `${c.reset}${c.dim}"I feel the need… the need for speed."${c.reset}`,
+    `${c.dim}${line}${c.reset}`,
+    '',
+  ].join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Engage mode — full afterburner, smart model, elevated iterations
+// ---------------------------------------------------------------------------
+export async function runEngage(mission) {
+  const contextId = `engage-${Date.now()}`;
+  const model = config.SMART_MODEL || config.OLLAMA_MODEL;
+  const maxIterations = Math.max((config.MAX_TOOL_ITERATIONS || 10) * 2, 20);
+
+  console.log(engageBanner(mission, model, contextId));
+  log.info('Engage mission started', { mission: mission.slice(0, 80), model, contextId });
+  console.log(`\n${c.orange}🔥 Engaging target...${c.reset}`);
+
+  const startTime = Date.now();
+  try {
+    const result = await runAgent(mission, contextId, {
+      ...makeCallbacks(),
+      maxIterations,
+      model,
+    });
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`\n${c.cyan}${result}${c.reset}`);
+    console.log(`\n${c.dim}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${c.reset}`);
+    console.log(`${c.green}✅ Mission complete.${c.reset} ${c.dim}(${elapsed}s)${c.reset}`);
+    console.log(`${c.dim}RTB. Maverick out.${c.reset}\n`);
+  } catch (err) {
+    console.error(`\n${c.red}❌ Mission failed: ${err.message}${c.reset}\n`);
+    log.error('Engage mission failed', { error: err.message });
+    process.exit(1);
+  }
+  process.exit(0);
 }
 
 // ---------------------------------------------------------------------------

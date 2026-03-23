@@ -219,6 +219,35 @@ describe('runAgent — LLM error handling', () => {
   });
 });
 
+describe('runAgent — model override', () => {
+  it('uses the provided model instead of calling the router', async () => {
+    mockChat.mockResolvedValueOnce(textReply('Done.'));
+
+    await runAgent('simple task', 'ch1', {
+      ...makeCallbacks(),
+      model: 'custom-override-model',
+    });
+
+    // The chat call should use the overridden model
+    expect(mockChat).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'custom-override-model' })
+    );
+  });
+
+  it('falls back to router when model option is not provided', async () => {
+    mockChat.mockResolvedValueOnce(textReply('Done.'));
+
+    await runAgent('simple task', 'ch1', makeCallbacks());
+
+    // Should still have been called (with whatever model the router returns)
+    expect(mockChat).toHaveBeenCalled();
+    // The model should NOT be undefined — router should have selected one
+    const callArgs = mockChat.mock.calls[0][0];
+    expect(callArgs.model).toBeDefined();
+    expect(callArgs.model).not.toBe('');
+  });
+});
+
 describe('runAgent — max iterations', () => {
   it('returns "too complex" message after exceeding MAX_TOOL_ITERATIONS', async () => {
     // Always respond with a tool call — forces the loop to exhaust iterations
