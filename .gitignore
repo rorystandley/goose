@@ -26,6 +26,9 @@ npm-debug.log*
 # SQLite memory database
 data/
 
+# Manual mission trigger (local dev tool)
+trigger-mission.js
+
 # Test coverage output
 coverage/
 
