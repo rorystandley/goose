@@ -58,6 +58,7 @@ Results are posted to the configured Slack channel. If no channel is set, the re
 | `saveResponseTo` | string | | File path (relative to project root) where the model's text response is written after the mission completes. Useful for missions that compose content for another mission to consume — e.g. a research mission saves findings to a file that a compose mission later injects. |
 | `injectFiles` | array | | Array of `{ "label": "...", "path": "...", "transform": "..." }` objects. Each file's contents are appended to the task string under a labelled header before the mission runs. Optionally set `transform` to pre-process the file before injection (see [inject files](#inject-files)). Enables text-in → text-out missions with zero tool calls — the model gets all context pre-loaded. |
 | `notifyFrom` | string | | File path (relative to project root) to read the Slack notification content from instead of using the model's response. Useful when a plugin tool writes a formatted notification to a file during execution. Falls back to the model's response if the file doesn't exist. |
+| `model` | string | | Override the LLM model for this mission (e.g. `"qwen3:30b-a3b"`). Applies to all phases unless a phase specifies its own `model`. Falls back to the global `OLLAMA_MODEL` from `.env`. |
 
 ---
 
@@ -253,10 +254,12 @@ Replace the top-level `task` with a `phases` array:
 |---|---|---|
 | `name` | string | Label for this phase (used in logs). |
 | `task` | string | The prompt for this phase — same as a top-level `task`. |
-| `injectPreviousResult` | boolean | Appends the previous phase's text response to this phase's task. |
+| `injectPreviousResult` | boolean | Appends the previous phase's output to this phase's task. When the previous phase uses `captureToolResults`, this injects the raw tool output; otherwise it injects the model's text response. |
 | `noTools` | boolean | Forces a text-only response — no tools are available. Ideal for composition/synthesis phases. |
 | `allowDangerous` | boolean | Allow dangerous tools in this phase only. Scoped per-phase, not per-mission. |
 | `maxIterations` | number | Override max tool iterations for this phase. |
+| `captureToolResults` | boolean | Use raw tool outputs as this phase's result instead of the model's text response. The scheduler captures every tool result during the phase and concatenates them (labelled by tool name). This guarantees real data flows to the next phase — the model can hallucinate, call extra tools, or produce gibberish text, and it doesn't matter. See [Capture tool results](#capture-tool-results). |
+| `model` | string | Override the LLM model for this phase only (e.g. `"qwen3:30b-a3b"`). Falls back to the mission-level `model`, then the global `OLLAMA_MODEL`. Useful for using a smaller model for tool-calling phases and a larger model for reasoning phases. |
 
 ### The gather → compose → execute pattern
 
@@ -268,7 +271,40 @@ This is the most effective pattern for phase-based missions:
 
 Each phase is a clean LLM boundary. The scheduler is the orchestrator, not the model.
 
+### Capture tool results
+
+By default, `injectPreviousResult` passes the model's **text response** from the previous phase. For gather phases this is a problem — the model calls the right tools, but its text response might be a summary, a hallucination, or completely off-topic (14B models frequently output things like *"I'm ready to assist you!"* instead of echoing back the data they fetched).
+
+Set `"captureToolResults": true` on a gather phase to bypass the model entirely. The scheduler intercepts every tool result via the `onToolResult` callback and concatenates them as the phase output:
+
+```
+--- twitter_get_mentions ---
+[1] ID: 123456 | @someuser (2026-03-25)
+Hey, love the project!
+
+--- twitter_get_timeline ---
+[1] ID: 789012 (2026-03-25)
+Another day, another deployment.
+```
+
+The model's text response is ignored. The next phase receives the raw tool outputs directly.
+
+```json
+{
+  "name": "gather",
+  "captureToolResults": true,
+  "task": "Call these 3 tools in order:\n1. twitter_get_mentions with maxResults 20\n2. twitter_search_tweets with query 'to:MyAccount' and maxResults 20\n3. twitter_get_timeline with username 'MyAccount' and maxResults 20",
+  "maxIterations": 5
+}
+```
+
+**When to use:** Any gather phase where the model calls tools and the results need to be passed reliably to the next phase. Especially important for 14B models which tend to hallucinate or summarise instead of echoing raw data.
+
+**When not to use:** Phases where the model's text response *is* the useful output (compose phases, analysis phases).
+
 ### Prompt hardening for gather phases
+
+> **Prefer `captureToolResults: true`** over prompt hardening. It eliminates the problem entirely rather than mitigating it. The guidance below applies when you're not using `captureToolResults`.
 
 14B models will summarise, interpret, and draft in gather phases unless strongly constrained. Use this pattern:
 
@@ -490,6 +526,8 @@ Copy any of these into your `data/missions.json`:
 | Model ignores "don't repeat" constraints / picks same option repeatedly | 14B model can't parse JSON and reason about exclusions in one pass | Use a `transform` on the injectFiles entry to pre-compute the available options. See [Transforms](#transforms). |
 | Slack notification shows stale/wrong result | `notifyFrom` file left over from a previous run | Make sure ALL exit paths in the plugin (error, skip, success) write to the notify file. Delete stale notify files after fixing. |
 | Slack posts feel hollow / model says "I'm ready to help" | Model response used instead of thought | Add `"postLastThought": true` and make sure the task instructs the model to use `record_thought` |
+| Gather phase passes garbage to next phase (hallucinated data, "I'm ready to assist!", summaries instead of raw data) | Model's text response doesn't contain the tool results | Add `"captureToolResults": true` to the gather phase. The scheduler captures raw tool outputs directly and passes those to the next phase instead of the model's text. See [Capture tool results](#capture-tool-results). |
+| Next phase hallucinates fake IDs / usernames despite real data existing | Gather phase didn't pass real data — model's text response was used instead of tool results | Same fix: `"captureToolResults": true` on the gather phase. |
 | Mission posts "I reached the maximum number of steps" | Task exceeds the default 10-iteration limit | Add `"maxIterations": 20` (or higher) to the mission; or raise `MAX_TOOL_ITERATIONS` globally in `.env` |
 
 ---

@@ -17,6 +17,29 @@
       "slackChannel": "YOUR_CHANNEL_ID_HERE",
       "timezone": "UTC",
       "enabled": false
+    },
+    {
+      "name": "phase-based-example",
+      "cron": "0 */6 * * *",
+      "freshContext": true,
+      "contextId": "mission-phase-example",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "timezone": "UTC",
+      "enabled": false,
+      "phases": [
+        {
+          "name": "gather",
+          "captureToolResults": true,
+          "task": "Call these tools in order:\n1. web_search with query 'interesting tech news today'\n2. get_datetime",
+          "maxIterations": 4
+        },
+        {
+          "name": "compose",
+          "task": "Using the data below, write a brief 2-3 sentence summary of the most interesting news item. Include the date.",
+          "injectPreviousResult": true,
+          "noTools": true
+        }
+      ]
     }
   ]
 }

@@ -52,12 +52,17 @@ const app = new App({
         phaseTask = `${phaseTask}\n\nContext from previous phase:\n${previousResult}`;
       }
       console.log(`\n--- Phase: ${phase.name} ---`);
-      previousResult = await runAgent(phaseTask, contextId, {
-        ...makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false),
+      const phaseModel = phase.model || mission.model;
+      const useCapture = !!phase.captureToolResults;
+      const callbacks = makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false, useCapture);
+      const agentResult = await runAgent(phaseTask, contextId, {
+        ...callbacks,
         ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
         ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
         ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
+        ...(phaseModel ? { model: phaseModel } : {}),
       });
+      previousResult = useCapture ? (callbacks.getCapturedResults() || agentResult) : agentResult;
       console.log(previousResult);
     }
     result = previousResult;
@@ -69,6 +74,7 @@ const app = new App({
         ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
         ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
         ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
+        ...(mission.model ? { model: mission.model } : {}),
       },
     );
   }

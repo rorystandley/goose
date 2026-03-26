@@ -210,10 +210,14 @@ async function executeDirect(toolName, args = {}) {
  *
  * @param {string}  missionName
  * @param {boolean} allowDangerous  Per-mission opt-in from missions.json
+ * @param {boolean} captureToolResults  When true, raw tool outputs are accumulated
+ *   and available via getCapturedResults(). Used by phases with captureToolResults
+ *   to bypass the model's text response and pass real data to the next phase.
  */
-export function makeSchedulerCallbacks(missionName, allowDangerous = false) {
+export function makeSchedulerCallbacks(missionName, allowDangerous = false, captureToolResults = false) {
   const permitted = allowDangerous || config.SCHEDULER_ALLOW_DANGEROUS;
-  return {
+  const capturedResults = [];
+  const callbacks = {
     onToolCall: async ({ toolName, requiresApproval }) => {
       if (requiresApproval && !permitted) {
         log.warn('Dangerous tool denied in scheduled mission', { mission: missionName, tool: toolName });
@@ -228,8 +232,13 @@ export function makeSchedulerCallbacks(missionName, allowDangerous = false) {
         tool: toolName,
         preview: String(result).slice(0, 100),
       });
+      if (captureToolResults) {
+        capturedResults.push(`--- ${toolName} ---\n${result}`);
+      }
     },
+    getCapturedResults: () => capturedResults.join('\n\n'),
   };
+  return callbacks;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,12 +305,19 @@ export async function startScheduler(notify = null) {
               if (phase.injectPreviousResult && previousResult) {
                 phaseTask = `${phaseTask}\n\nContext from previous phase:\n${previousResult}`;
               }
-              previousResult = await runAgent(phaseTask, contextId, {
-                ...makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false),
+              const phaseModel = phase.model || mission.model;
+              const useCapture = !!phase.captureToolResults;
+              const callbacks = makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false, useCapture);
+              const agentResult = await runAgent(phaseTask, contextId, {
+                ...callbacks,
                 ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
                 ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
                 ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
+                ...(phaseModel ? { model: phaseModel } : {}),
               });
+              // When captureToolResults is set, use the raw tool outputs
+              // instead of the model's text response (prevents hallucination).
+              previousResult = useCapture ? (callbacks.getCapturedResults() || agentResult) : agentResult;
               log.info('Phase complete', { mission: mission.name, phase: phase.name, responseChars: previousResult?.length });
             }
             result = previousResult;
@@ -313,6 +329,7 @@ export async function startScheduler(notify = null) {
                 ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
                 ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
                 ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
+                ...(mission.model ? { model: mission.model } : {}),
               },
             );
           }
