@@ -2,6 +2,7 @@ name: CI
 
 permissions:
   contents: write
+  pull-requests: write
 
 on:
   push:
@@ -79,19 +80,21 @@ jobs:
         run: |
           node -e "const fs=require('node:fs');const summary=JSON.parse(fs.readFileSync('coverage/coverage-summary.json','utf8'));const pct=summary.total.lines.pct;const color=pct>=90?'brightgreen':pct>=80?'green':pct>=70?'yellowgreen':pct>=60?'yellow':pct>=50?'orange':'red';const badge={schemaVersion:1,label:'coverage',message:pct.toFixed(2)+'%',color};fs.writeFileSync('docs/assets/coverage-badge.json',JSON.stringify(badge,null,2)+'\n');"
 
-      - name: Commit coverage badge payload
+      - name: Create coverage badge update PR
         if: github.event_name == 'push' && github.ref_name == 'develop'
-        run: |
-          if git diff --quiet -- docs/assets/coverage-badge.json; then
-            echo "Coverage badge is already up to date"
-            exit 0
-          fi
+        uses: peter-evans/create-pull-request@v7
+        with:
+          add-paths: docs/assets/coverage-badge.json
+          base: develop
+          branch: ci/update-coverage-badge
+          commit-message: "ci: update coverage badge data"
+          title: "ci: update coverage badge data"
+          body: |
+            Automated coverage badge payload update from the CI workflow.
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/assets/coverage-badge.json
-          git commit -m "ci: update coverage badge data [skip ci]"
-          git push
+            This keeps `develop` protected by sending the generated badge data
+            through a normal pull request instead of pushing directly.
+          delete-branch: true
 
       - name: Upload coverage report (HTML)
         if: always()
