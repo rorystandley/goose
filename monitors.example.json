@@ -9,6 +9,7 @@
       "task": "The URL {url} returned {status}. Is this expected? Summarise the situation and check if this is a known issue.",
       "contextId": "monitor-server-health",
       "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "speakOnFailure": true,
       "enabled": false
     },
     {
@@ -32,6 +33,7 @@
       "task": "CPU usage has reached {value}% — above the {threshold}% threshold. What process might be causing this? Use run_command to investigate if needed.",
       "contextId": "monitor-high-cpu",
       "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "speakOnFailure": true,
       "enabled": false
     },
     {
@@ -44,6 +46,7 @@
       "task": "Memory usage has reached {value}% — above the {threshold}% threshold. Summarise the situation and suggest any immediate actions.",
       "contextId": "monitor-high-memory",
       "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "speakOnFailure": true,
       "enabled": false
     }
   ]

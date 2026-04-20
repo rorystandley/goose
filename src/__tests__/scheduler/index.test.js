@@ -30,6 +30,9 @@ vi.mock('node-cron', () => ({
 const mockRunAgent = vi.hoisted(() => vi.fn());
 vi.mock('../../agent/loop.js', () => ({ runAgent: mockRunAgent }));
 
+const mockSpeak = vi.hoisted(() => vi.fn());
+vi.mock('../../interfaces/voice/tts.js', () => ({ speak: mockSpeak }));
+
 vi.mock('../../tools/index.js', () => ({
   initTools: vi.fn().mockResolvedValue(undefined),
   toolMap: {},
@@ -70,6 +73,7 @@ beforeEach(() => {
   mockReadFileSync.mockImplementation(() => { throw new Error('ENOENT'); });
   mockSchedule.mockReturnValue({ stop: vi.fn() });
   mockRunAgent.mockResolvedValue('Mission result text');
+  mockSpeak.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -249,6 +253,30 @@ describe('startScheduler — cron callback', () => {
     mockRunAgent.mockRejectedValueOnce(new Error('Ollama offline'));
     await expect(runCronCallback()).resolves.not.toThrow();
   });
+
+  it('speaks the mission output when speakResponse is true', async () => {
+    const mission = { ...sampleMission, speakResponse: true };
+    await runCronCallback(mission);
+    expect(mockSpeak).toHaveBeenCalledWith('Mission result text');
+  });
+
+  it('does not speak mission output by default', async () => {
+    await runCronCallback();
+    expect(mockSpeak).not.toHaveBeenCalled();
+  });
+
+  it('speaks a failure summary when speakOnFailure is true', async () => {
+    mockRunAgent.mockRejectedValueOnce(new Error('Ollama offline'));
+    const mission = { ...sampleMission, speakOnFailure: true };
+    await expect(runCronCallback(mission)).resolves.not.toThrow();
+    expect(mockSpeak).toHaveBeenCalledWith('Goose mission morning-briefing failed: Ollama offline');
+  });
+
+  it('does not let speech failures break a completed mission', async () => {
+    mockSpeak.mockRejectedValueOnce(new Error('TTS offline'));
+    const mission = { ...sampleMission, speakResponse: true };
+    await expect(runCronCallback(mission)).resolves.not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -281,6 +309,12 @@ describe('startScheduler — postLastThought', () => {
     const mission = { ...sampleMission, postLastThought: true };
     const notify = await runWithPostLastThought(mission, thoughtEntry);
     expect(notify).toHaveBeenCalledWith('C123', 'morning-briefing', 'An interesting autonomous thought.');
+  });
+
+  it('speaks the recorded thought when postLastThought and speakResponse are both true', async () => {
+    const mission = { ...sampleMission, postLastThought: true, speakResponse: true };
+    await runWithPostLastThought(mission, thoughtEntry);
+    expect(mockSpeak).toHaveBeenCalledWith('An interesting autonomous thought.');
   });
 
   it('falls back to model response when postLastThought:true but no thought was written', async () => {

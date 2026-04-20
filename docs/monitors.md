@@ -54,6 +54,7 @@ When a monitor triggers, Goose runs the configured task and posts the result to 
 | `task` | string | ✅ | Task briefed to Goose when the monitor triggers — same format as a Slack DM or CLI prompt. Supports [template variables](#template-variables). |
 | `contextId` | string | | Memory context key override. Defaults to `monitor-<name>`. |
 | `slackChannel` | string | | Slack channel or DM ID to post the result to. If omitted, result is logged to stdout only. |
+| `speakOnFailure` | boolean | | Speak the generated monitor alert when the monitor triggers, and speak a short summary if the check or agent step fails. Use for local urgent alerts only. |
 | `enabled` | boolean | ✅ | `true` to activate, `false` to define without starting. |
 
 ### Type-specific fields

@@ -38,6 +38,28 @@ http://127.0.0.1:7860
 
 Use `Download/load selected model` before long Goose voice sessions. This pays the first Hugging Face download/load cost before Goose needs to speak.
 
+## Run With pm2
+
+The Goose `ecosystem.config.cjs` includes an optional `mlx-tts-studio` process. From the Goose repo:
+
+```bash
+pm2 start ecosystem.config.cjs --only mlx-tts-studio
+pm2 save
+```
+
+By default it looks for MLX TTS Studio beside Goose at `../mlx-tts-studio`. If your clone is somewhere else:
+
+```bash
+MLX_TTS_STUDIO_PATH=/path/to/mlx-tts-studio pm2 start ecosystem.config.cjs --only mlx-tts-studio
+pm2 save
+```
+
+Check it with:
+
+```bash
+curl -s http://127.0.0.1:7860/health
+```
+
 ## Configure Goose
 
 Enable the Goose integration in `.env`:

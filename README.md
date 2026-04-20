@@ -1,16 +1,6 @@
 # Goose
 
 <p align="center">
-  <a href="https://github.com/rorystandley/goose/actions/workflows/ci.yml">
-    <img src="https://github.com/rorystandley/goose/actions/workflows/ci.yml/badge.svg" alt="CI" />
-  </a>
-  <img src="https://img.shields.io/badge/node-20-339933?logo=node.js&logoColor=white" alt="Node 20" />
-  <img src="https://img.shields.io/badge/tests-vitest-6E9F18?logo=vitest&logoColor=white" alt="Vitest" />
-  <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Frorystandley%2Fgoose%2Fdevelop%2Fdocs%2Fassets%2Fcoverage-badge.json" alt="Coverage" />
-  <img src="https://img.shields.io/badge/llm-ollama%20%7C%20vllm--mlx-black" alt="Ollama | vllm-mlx" />
-</p>
-
-<p align="center">
   <img src="docs/assets/goose.png" alt="Goose" width="200"/>
 </p>
 
@@ -123,14 +113,15 @@ Connects via WebSocket, no public URL or ngrok needed.
 
 **pm2 (Production — persistent, survives reboots)**
 ```bash
-pm2 start ecosystem.config.cjs   # start Goose and register it with pm2
-pm2 save                          # persist the process list across reboots
-pm2 startup                       # generate a startup script (run the command it prints)
-pm2 logs goose                    # tail live logs
-pm2 restart goose                 # after config or code changes
-pm2 status                        # uptime, restart count, memory
+pm2 start ecosystem.config.cjs --only goose,goose-scheduler  # start Goose
+pm2 start ecosystem.config.cjs --only mlx-tts-studio         # optional local voice service
+pm2 save                                                     # persist the process list across reboots
+pm2 startup                                                  # generate a startup script (run the command it prints)
+pm2 logs goose                                               # tail live logs
+pm2 restart goose goose-scheduler --update-env               # after config or code changes
+pm2 status                                                   # uptime, restart count, memory
 ```
-`ecosystem.config.cjs` is committed to the repo. pm2 auto-restarts Goose on crash (e.g. Slack socket disconnects) with a 3-second delay and a max of 10 restarts.
+`ecosystem.config.cjs` is committed to the repo. pm2 auto-restarts Goose on crash (e.g. Slack socket disconnects) with a short delay and a max restart limit. The optional `mlx-tts-studio` process expects the TTS app beside Goose at `../mlx-tts-studio`; set `MLX_TTS_STUDIO_PATH=/path/to/mlx-tts-studio` if it lives elsewhere.
 
 **CLI interface**
 ```bash

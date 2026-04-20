@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('fs');
 vi.mock('../../agent/loop.js', () => ({ runAgent: vi.fn().mockResolvedValue('agent result') }));
+const mockSpeak = vi.hoisted(() => vi.fn());
+vi.mock('../../interfaces/voice/tts.js', () => ({ speak: mockSpeak }));
 vi.mock('../../logger.js', () => ({
   createLogger: () => ({
     info:  vi.fn(),
@@ -57,6 +59,7 @@ beforeEach(() => {
   fs.readFileSync.mockReturnValue(monitorsJson([baseMonitor]));
   // Re-apply after clearAllMocks (Vitest 2.x resets mock implementations)
   runAgent.mockResolvedValue('agent result');
+  mockSpeak.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -207,6 +210,41 @@ describe('startMonitors()', () => {
     const taskArg = runAgent.mock.calls[0][0];
     // task was 'CPU is at {value}%' — should have value substituted
     expect(taskArg).toMatch(/CPU is at \d+%/);
+    stopMonitors(ids);
+  });
+
+  it('speaks monitor output when speakOnFailure is enabled and the monitor triggers', async () => {
+    const monitor = { ...baseMonitor, speakOnFailure: true };
+    fs.readFileSync.mockReturnValueOnce(monitorsJson([monitor]));
+    const ids = startMonitors();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mockSpeak).toHaveBeenCalledWith('agent result');
+    stopMonitors(ids);
+  });
+
+  it('does not speak monitor output by default', async () => {
+    const ids = startMonitors();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mockSpeak).not.toHaveBeenCalled();
+    stopMonitors(ids);
+  });
+
+  it('speaks a monitor agent failure summary when speakOnFailure is enabled', async () => {
+    runAgent.mockRejectedValueOnce(new Error('LLM offline'));
+    const monitor = { ...baseMonitor, speakOnFailure: true };
+    fs.readFileSync.mockReturnValueOnce(monitorsJson([monitor]));
+    const ids = startMonitors();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mockSpeak).toHaveBeenCalledWith('Goose monitor test-monitor failed: LLM offline');
+    stopMonitors(ids);
+  });
+
+  it('does not let speech failures break monitor handling', async () => {
+    mockSpeak.mockRejectedValueOnce(new Error('TTS offline'));
+    const monitor = { ...baseMonitor, speakOnFailure: true };
+    fs.readFileSync.mockReturnValueOnce(monitorsJson([monitor]));
+    const ids = startMonitors();
+    await expect(vi.advanceTimersByTimeAsync(200)).resolves.not.toThrow();
     stopMonitors(ids);
   });
 });

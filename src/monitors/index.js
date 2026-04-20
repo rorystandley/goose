@@ -5,8 +5,18 @@ import config from '../config.js';
 import { check as checkUrl } from './types/url.js';
 import { check as checkFile } from './types/file.js';
 import { check as checkSystem } from './types/system.js';
+import { speak } from '../interfaces/voice/tts.js';
 
 const log = createLogger('monitors');
+
+async function speakSafely(text, logContext) {
+  if (!text?.trim()) return;
+  try {
+    await speak(text);
+  } catch (err) {
+    log.warn('Speech output failed', { ...logContext, error: err.message });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Interval parser
@@ -152,6 +162,12 @@ export function startMonitors(notify = null) {
           : checker(monitor, state);
       } catch (err) {
         log.error('Monitor check failed', { name: monitor.name, error: err.message });
+        if (monitor.speakOnFailure) {
+          await speakSafely(
+            `Goose monitor ${monitor.name} check failed: ${err.message}`,
+            { name: monitor.name, mode: 'check-failure' },
+          );
+        }
         return;
       }
 
@@ -176,8 +192,18 @@ export function startMonitors(notify = null) {
         if (notify && monitor.slackChannel) {
           await notify(monitor.slackChannel, monitor.name, agentResult);
         }
+
+        if (monitor.speakOnFailure) {
+          await speakSafely(agentResult, { name: monitor.name, mode: 'trigger' });
+        }
       } catch (err) {
         log.error('Monitor agent failed', { name: monitor.name, error: err.message });
+        if (monitor.speakOnFailure) {
+          await speakSafely(
+            `Goose monitor ${monitor.name} failed: ${err.message}`,
+            { name: monitor.name, mode: 'agent-failure' },
+          );
+        }
       }
     }, intervalMs);
 

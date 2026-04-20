@@ -53,12 +53,28 @@ Results are posted to the configured Slack channel. If no channel is set, the re
 | `timezone` | string | | IANA timezone name for the cron schedule. Defaults to `UTC`. Examples: `Europe/London`, `America/New_York`, `Asia/Tokyo`. |
 | `freshContext` | boolean | | **Recommended for all missions.** Generate a unique contextId for each run so the mission starts with no memory of previous runs. Without this, context accumulates across cron fires and the model drifts — it may ignore instructions, repeat itself, or fabricate responses based on prior patterns instead of calling tools. Only omit this if you specifically want cross-run memory. |
 | `postLastThought` | boolean | | After the mission completes, read `data/thoughts.jsonl` for any `record_thought` entries written during this run and post the most recent one to Slack instead of the model's response text. Falls back to the model's response if no thought was recorded. Pair with the `record_thought` tool in the task description. |
+| `speakResponse` | boolean | | Speak the completed mission output through the configured voice adapter. Use only for short, useful outputs such as a morning briefing. |
+| `speakOnFailure` | boolean | | Speak a short failure summary if the mission throws. Useful for backup or health-check missions where silence on success is preferred. |
 | `maxIterations` | number | | Override the global `MAX_TOOL_ITERATIONS` limit for this mission only. One iteration = one LLM call (a single call may execute multiple tools). Use for complex multi-step missions that need more headroom — e.g. reading many files, chained tool tasks. Defaults to `MAX_TOOL_ITERATIONS` env var (default: 10). |
 | `allowDangerous` | boolean | | Allow dangerous tools (`write_file`, `run_command`, and any plugin tools marked `dangerous`) to run automatically in this mission without human approval. Defaults to `false`. Prefer this over the global `SCHEDULER_ALLOW_DANGEROUS` env var — it scopes the permission to just the mission that needs it. |
 | `saveResponseTo` | string | | File path (relative to project root) where the model's text response is written after the mission completes. Useful for missions that compose content for another mission to consume — e.g. a research mission saves findings to a file that a compose mission later injects. |
 | `injectFiles` | array | | Array of `{ "label": "...", "path": "...", "transform": "..." }` objects. Each file's contents are appended to the task string under a labelled header before the mission runs. Optionally set `transform` to pre-process the file before injection (see [inject files](#inject-files)). Enables text-in → text-out missions with zero tool calls — the model gets all context pre-loaded. |
 | `notifyFrom` | string | | File path (relative to project root) to read the Slack notification content from instead of using the model's response. Useful when a plugin tool writes a formatted notification to a file during execution. Falls back to the model's response if the file doesn't exist. |
 | `model` | string | | Override the LLM model for this mission (e.g. `"qwen3:30b-a3b"`). Applies to all phases unless a phase specifies its own `model`. Falls back to the global `OLLAMA_MODEL` from `.env`. |
+
+---
+
+## Test mission speech
+
+Use the helper script to test the configured voice adapter without waiting for a cron fire:
+
+```bash
+node scripts/test-mission-speech.js morning-briefing
+node scripts/test-mission-speech.js data-backup --failure
+node scripts/test-mission-speech.js morning-briefing "Good morning. Mission speech is working."
+```
+
+The helper loads `data/missions.json`, checks the named mission, then calls the same `speak()` adapter used by scheduled missions.
 
 ---
 

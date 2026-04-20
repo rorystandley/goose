@@ -5,6 +5,7 @@ import { runAgent } from '../agent/loop.js';
 import { toolMap, initTools } from '../tools/index.js';
 import { createLogger } from '../logger.js';
 import config from '../config.js';
+import { speak } from '../interfaces/voice/tts.js';
 
 const log = createLogger('scheduler');
 
@@ -33,6 +34,34 @@ function buildNotifyContent(notifyFrom, result) {
     }
   }
   return result;
+}
+
+/**
+ * Resolve the externally visible mission output once, then reuse it for Slack
+ * and optional speech. This keeps spoken briefings aligned with notifications.
+ *
+ * @param {object} mission
+ * @param {string} result
+ * @param {string} startTime
+ * @returns {string}
+ */
+function buildMissionOutput(mission, result, startTime) {
+  if (mission.postLastThought) {
+    return readLastThoughtSince(startTime) ?? result;
+  }
+  if (mission.notifyFrom) {
+    return buildNotifyContent(mission.notifyFrom, result);
+  }
+  return result;
+}
+
+async function speakSafely(text, logContext) {
+  if (!text?.trim()) return;
+  try {
+    await speak(text);
+  } catch (err) {
+    log.warn('Speech output failed', { ...logContext, error: err.message });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -346,17 +375,23 @@ export async function startScheduler(notify = null) {
             }
           }
 
+          const output = buildMissionOutput(mission, result, startTime);
+
           if (notify && mission.slackChannel) {
-            let content = result;
-            if (mission.postLastThought) {
-              content = readLastThoughtSince(startTime) ?? result;
-            } else if (mission.notifyFrom) {
-              content = buildNotifyContent(mission.notifyFrom, result);
-            }
-            await notify(mission.slackChannel, mission.name, content);
+            await notify(mission.slackChannel, mission.name, output);
+          }
+
+          if (mission.speakResponse) {
+            await speakSafely(output, { name: mission.name, mode: 'response' });
           }
         } catch (err) {
           log.error('Mission failed', { name: mission.name, error: err.message });
+          if (mission.speakOnFailure) {
+            await speakSafely(
+              `Goose mission ${mission.name} failed: ${err.message}`,
+              { name: mission.name, mode: 'failure' },
+            );
+          }
         }
       },
       { timezone: mission.timezone || 'UTC' },

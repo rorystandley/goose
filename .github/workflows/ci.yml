@@ -1,8 +1,7 @@
 name: CI
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 on:
   push:
@@ -52,7 +51,7 @@ jobs:
         run: npm audit --audit-level=high
 
   test:
-    name: Test & Coverage
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -68,45 +67,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests with coverage
-        run: npm run test:coverage
+      - name: Run tests
+        run: npm test
         env:
           SLACK_BOT_TOKEN: xoxb-ci-placeholder
           SLACK_APP_TOKEN: xapp-ci-placeholder
           SLACK_SIGNING_SECRET: ci-signing-secret
           LOG_LEVEL: error
-
-      - name: Build coverage badge payload
-        run: |
-          node -e "const fs=require('node:fs');const summary=JSON.parse(fs.readFileSync('coverage/coverage-summary.json','utf8'));const pct=summary.total.lines.pct;const color=pct>=90?'brightgreen':pct>=80?'green':pct>=70?'yellowgreen':pct>=60?'yellow':pct>=50?'orange':'red';const badge={schemaVersion:1,label:'coverage',message:pct.toFixed(2)+'%',color};fs.writeFileSync('docs/assets/coverage-badge.json',JSON.stringify(badge,null,2)+'\n');"
-
-      - name: Create coverage badge update PR
-        if: github.event_name == 'push' && github.ref_name == 'develop'
-        uses: peter-evans/create-pull-request@v7
-        with:
-          add-paths: docs/assets/coverage-badge.json
-          base: develop
-          branch: ci/update-coverage-badge
-          commit-message: "ci: update coverage badge data"
-          title: "ci: update coverage badge data"
-          body: |
-            Automated coverage badge payload update from the CI workflow.
-
-            This keeps `develop` protected by sending the generated badge data
-            through a normal pull request instead of pushing directly.
-          delete-branch: true
-
-      - name: Upload coverage report (HTML)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 30
-
-      - name: Post coverage summary to PR
-        if: github.event_name == 'pull_request'
-        uses: davelosert/vitest-coverage-report-action@v2
-        with:
-          json-summary-path: coverage/coverage-summary.json
-          json-summary-compare-path: coverage/coverage-summary.json
