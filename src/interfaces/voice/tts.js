@@ -9,7 +9,24 @@ function processPromise(command, args, { swallowErrors = false } = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args);
 
-    proc.on('close', () => resolve());
+    proc.on('close', (code, signal) => {
+      if (code === 0 && signal == null) {
+        resolve();
+        return;
+      }
+
+      const reason = signal != null
+        ? `terminated by signal ${signal}`
+        : `exited with code ${code}`;
+      const err = new Error(`${command} ${reason}`);
+
+      if (swallowErrors) {
+        log.warn('TTS unavailable', { command, error: err.message, code, signal });
+        resolve();
+      } else {
+        reject(err);
+      }
+    });
     proc.on('error', err => {
       if (swallowErrors) {
         log.warn('TTS unavailable', { command, error: err.message });
