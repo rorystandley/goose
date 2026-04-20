@@ -70,6 +70,8 @@ VOICE_MLX_TTS_URL=http://127.0.0.1:7860
 VOICE_MLX_TTS_MODEL=mlx-community/Kokoro-82M-bf16
 VOICE_MLX_TTS_VOICE=af_heart
 VOICE_MLX_TTS_LANGUAGE=a
+VOICE_MLX_TTS_INSTRUCT=
+VOICE_MLX_TTS_TEMPERATURE=
 VOICE_MLX_TTS_TIMEOUT_MS=120000
 ```
 
@@ -96,6 +98,22 @@ MLX TTS Studio -> afplay -> say fallback
 ```
 
 The Goose adapter uses `/synthesize` rather than `/v1/audio/speech` because both processes run on the same machine and a returned local file path is the simplest playback path.
+
+## VoiceDesign Instructions
+
+For Qwen3 VoiceDesign, set the model to `mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16`, leave `VOICE_MLX_TTS_VOICE` empty, set `VOICE_MLX_TTS_LANGUAGE=english`, and put the reusable voice description in `VOICE_MLX_TTS_INSTRUCT`.
+
+Example:
+
+```dotenv
+VOICE_MLX_TTS_MODEL=mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16
+VOICE_MLX_TTS_VOICE=
+VOICE_MLX_TTS_LANGUAGE=english
+VOICE_MLX_TTS_INSTRUCT=An original confident naval aviator wingman voice: warm, witty, steady under pressure, with a relaxed American accent, clean radio-style articulation, medium pitch, subtle rasp, and playful timing. Friendly and capable, like someone smiling while keeping the mission on track. Natural, human, conversational, not a celebrity imitation.
+VOICE_MLX_TTS_TEMPERATURE=0.65
+```
+
+VoiceDesign conditions each generation from that instruction. It does not create a persistent speaker file in Goose, so keeping the instruction specific and consistent matters.
 
 ## Smoke Test
 

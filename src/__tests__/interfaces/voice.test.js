@@ -12,6 +12,8 @@ const mockConfig    = vi.hoisted(() => ({
   VOICE_MLX_TTS_MODEL: 'test-tts-model',
   VOICE_MLX_TTS_VOICE: 'casual_male',
   VOICE_MLX_TTS_LANGUAGE: 'en',
+  VOICE_MLX_TTS_INSTRUCT: '',
+  VOICE_MLX_TTS_TEMPERATURE: undefined,
   VOICE_MLX_TTS_TIMEOUT_MS: 5000,
 }));
 const mockSpawn     = vi.hoisted(() => vi.fn());
@@ -66,6 +68,8 @@ describe('speak()', () => {
     mockConfig.VOICE_MLX_TTS_MODEL = 'test-tts-model';
     mockConfig.VOICE_MLX_TTS_VOICE = 'casual_male';
     mockConfig.VOICE_MLX_TTS_LANGUAGE = 'en';
+    mockConfig.VOICE_MLX_TTS_INSTRUCT = '';
+    mockConfig.VOICE_MLX_TTS_TEMPERATURE = undefined;
     mockConfig.VOICE_MLX_TTS_TIMEOUT_MS = 5000;
   });
 
@@ -126,6 +130,38 @@ describe('speak()', () => {
 
     await expect(promise).resolves.toBeUndefined();
     expect(mockSpawn).not.toHaveBeenCalledWith('say', ['Hello Goose']);
+  });
+
+  it('sends VoiceDesign instructions to MLX TTS Studio when configured', async () => {
+    mockConfig.VOICE_TTS_BACKEND = 'mlx';
+    mockConfig.VOICE_MLX_TTS_INSTRUCT = 'A warm original wingman voice.';
+    mockConfig.VOICE_MLX_TTS_TEMPERATURE = 0.65;
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ audio_path: '/tmp/goose-tts.wav' }),
+    });
+    const proc = makeMockProc();
+    mockSpawn.mockReturnValue(proc);
+
+    const promise = speak('Hello Goose');
+
+    await vi.waitFor(() => {
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toMatchObject({
+        text: 'Hello Goose',
+        model: 'test-tts-model',
+        voice: 'casual_male',
+        lang_code: 'en',
+        instruct: 'A warm original wingman voice.',
+        temperature: 0.65,
+      });
+    });
+    await vi.waitFor(() => {
+      expect(mockSpawn).toHaveBeenCalledWith('afplay', ['/tmp/goose-tts.wav']);
+    });
+    proc.emit('close', 0);
+
+    await expect(promise).resolves.toBeUndefined();
   });
 
   it('falls back to say when afplay exits non-zero after MLX returns audio_path', async () => {

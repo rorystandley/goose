@@ -18,6 +18,16 @@ function parsePositiveIntOrFallback(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseOptionalPositiveFloat(value) {
+  if (value == null || value === '') return undefined;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function envValueOrFallback(key, fallback) {
+  return Object.hasOwn(process.env, key) ? process.env[key] : fallback;
+}
+
 const config = Object.freeze({
   SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
   SLACK_APP_TOKEN: process.env.SLACK_APP_TOKEN,
@@ -53,8 +63,10 @@ const config = Object.freeze({
   VOICE_TTS_BACKEND: process.env.VOICE_TTS_BACKEND || 'say',
   VOICE_MLX_TTS_URL: process.env.VOICE_MLX_TTS_URL || 'http://127.0.0.1:7860',
   VOICE_MLX_TTS_MODEL: process.env.VOICE_MLX_TTS_MODEL || 'mlx-community/Kokoro-82M-bf16',
-  VOICE_MLX_TTS_VOICE: process.env.VOICE_MLX_TTS_VOICE || 'af_heart',
+  VOICE_MLX_TTS_VOICE: envValueOrFallback('VOICE_MLX_TTS_VOICE', 'af_heart'),
   VOICE_MLX_TTS_LANGUAGE: process.env.VOICE_MLX_TTS_LANGUAGE || 'a',
+  VOICE_MLX_TTS_INSTRUCT: process.env.VOICE_MLX_TTS_INSTRUCT || '',
+  VOICE_MLX_TTS_TEMPERATURE: parseOptionalPositiveFloat(process.env.VOICE_MLX_TTS_TEMPERATURE),
   VOICE_MLX_TTS_TIMEOUT_MS: parsePositiveIntOrFallback(process.env.VOICE_MLX_TTS_TIMEOUT_MS, 120000),
   // Search providers — add whichever key(s) you have; first configured one is used
   BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY || '',

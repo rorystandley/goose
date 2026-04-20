@@ -68,16 +68,24 @@ export async function speakWithMlx(text) {
 
   try {
     const url = new URL('/synthesize', config.VOICE_MLX_TTS_URL).toString();
+    const requestPayload = {
+      text,
+      model: config.VOICE_MLX_TTS_MODEL,
+      voice: config.VOICE_MLX_TTS_VOICE,
+      lang_code: config.VOICE_MLX_TTS_LANGUAGE,
+      audio_format: 'wav',
+    };
+    if (config.VOICE_MLX_TTS_INSTRUCT?.trim()) {
+      requestPayload.instruct = config.VOICE_MLX_TTS_INSTRUCT;
+    }
+    if (config.VOICE_MLX_TTS_TEMPERATURE != null) {
+      requestPayload.temperature = config.VOICE_MLX_TTS_TEMPERATURE;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        model: config.VOICE_MLX_TTS_MODEL,
-        voice: config.VOICE_MLX_TTS_VOICE,
-        lang_code: config.VOICE_MLX_TTS_LANGUAGE,
-        audio_format: 'wav',
-      }),
+      body: JSON.stringify(requestPayload),
       signal: controller.signal,
     });
 

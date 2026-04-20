@@ -110,6 +110,8 @@ VOICE_MLX_TTS_URL=http://127.0.0.1:7860
 VOICE_MLX_TTS_MODEL=mlx-community/Kokoro-82M-bf16
 VOICE_MLX_TTS_VOICE=af_heart
 VOICE_MLX_TTS_LANGUAGE=a
+VOICE_MLX_TTS_INSTRUCT=
+VOICE_MLX_TTS_TEMPERATURE=
 ```
 
 | Variable | Default | Description |
@@ -120,6 +122,8 @@ VOICE_MLX_TTS_LANGUAGE=a
 | `VOICE_MLX_TTS_MODEL` | `mlx-community/Kokoro-82M-bf16` | Hugging Face model id or MLX TTS Studio preset model |
 | `VOICE_MLX_TTS_VOICE` | `af_heart` | Voice preset to request from MLX TTS Studio |
 | `VOICE_MLX_TTS_LANGUAGE` | `a` | Language code sent to MLX TTS Studio |
+| `VOICE_MLX_TTS_INSTRUCT` | | Optional instruction for compatible models such as Qwen3 VoiceDesign |
+| `VOICE_MLX_TTS_TEMPERATURE` | | Optional sampler temperature for compatible models; lower values can improve consistency |
 | `VOICE_MLX_TTS_TIMEOUT_MS` | `120000` | Maximum time to wait for local synthesis before falling back |
 
 ---
