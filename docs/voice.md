@@ -1,8 +1,10 @@
 # Goose — Voice Interface
 
-Voice mode is a hands-free push-to-talk interface. Press Enter to start recording, speak your task, press Enter again to stop — Goose transcribes the audio locally with `whisper-cli`, runs the task, and reads the response back with macOS `say`.
+Voice mode is a hands-free push-to-talk interface. Press Enter to start recording, speak your task, press Enter again to stop — Goose transcribes the audio locally with `whisper-cli`, runs the task, and reads the response back with macOS `say` or an optional local MLX TTS Studio service.
 
 No new npm packages are required. Recording and transcription are delegated entirely to system tools.
+
+For a higher-quality local response voice, see [MLX TTS Studio integration](mlx-tts.md). That path uses the standalone [MLX TTS Studio](https://github.com/rorystandley/mlx-tts-studio) localhost API while keeping Goose local. Kokoro is the recommended default while Goose is also running a local LLM.
 
 ---
 
@@ -12,7 +14,8 @@ No new npm packages are required. Recording and transcription are delegated enti
 |---|---|---|
 | `sox` | Microphone recording | macOS / Linux (`brew install sox`) |
 | `whisper-cli` | Local speech-to-text transcription | installed by `brew install whisper-cpp` |
-| `say` | Text-to-speech response playback | macOS built-in — zero install |
+| `say` | Default text-to-speech response playback and fallback | macOS built-in — zero install |
+| MLX TTS Studio | Optional higher-quality local response voice | Apple Silicon, separate local service |
 
 > **Note:** `say` is macOS-only. On other platforms Goose will complete the task and print the response but will not read it aloud — voice mode otherwise works normally.
 
@@ -35,6 +38,8 @@ npm run voice
 ```
 
 Press **Enter** to start recording, speak your task, press **Enter** again to stop. Goose will transcribe, think, and speak its response.
+
+To use MLX TTS output instead of macOS `say`, install and start [MLX TTS Studio](mlx-tts.md), then set `VOICE_TTS_BACKEND=mlx`.
 
 ---
 
@@ -98,11 +103,24 @@ Set in `.env`:
 ```
 # Whisper model name (or absolute path to a .bin file)
 VOICE_WHISPER_MODEL=base.en
+
+# Optional higher-quality TTS through MLX TTS Studio
+VOICE_TTS_BACKEND=mlx
+VOICE_MLX_TTS_URL=http://127.0.0.1:7860
+VOICE_MLX_TTS_MODEL=mlx-community/Kokoro-82M-bf16
+VOICE_MLX_TTS_VOICE=af_heart
+VOICE_MLX_TTS_LANGUAGE=a
 ```
 
 | Variable | Default | Description |
 |---|---|---|
 | `VOICE_WHISPER_MODEL` | `base.en` | Whisper model name to use, or an absolute path to a `.bin` file |
+| `VOICE_TTS_BACKEND` | `say` | Set to `mlx` to try MLX TTS Studio first, with `say` fallback |
+| `VOICE_MLX_TTS_URL` | `http://127.0.0.1:7860` | Local MLX TTS Studio service URL |
+| `VOICE_MLX_TTS_MODEL` | `mlx-community/Kokoro-82M-bf16` | Hugging Face model id or MLX TTS Studio preset model |
+| `VOICE_MLX_TTS_VOICE` | `af_heart` | Voice preset to request from MLX TTS Studio |
+| `VOICE_MLX_TTS_LANGUAGE` | `a` | Language code sent to MLX TTS Studio |
+| `VOICE_MLX_TTS_TIMEOUT_MS` | `120000` | Maximum time to wait for local synthesis before falling back |
 
 ---
 
@@ -132,6 +150,7 @@ Voice mode uses a persistent context keyed to the machine: `voice-<hostname>`. C
 | `sox not found` | sox not installed | `brew install sox` |
 | `(nothing heard, try again)` | Silent recording or transcription returned empty | Speak louder, check microphone permissions in System Settings → Privacy → Microphone |
 | Response not read aloud | Non-macOS platform | `say` is macOS-only; response is printed to terminal instead |
+| MLX voice falls back to `say` | MLX TTS Studio is not running, model is not warm, or synthesis timed out | Start `~/Apps/mlx-tts-studio/run.sh`, open `http://127.0.0.1:7860`, and use `Download/load selected model` |
 | Transcription is slow | Large model selected | Switch to `base.en` in `.env`: `VOICE_WHISPER_MODEL=base.en` |
 | Transcription is inaccurate | `base.en` model | Download `small.en` (see above) then set `VOICE_WHISPER_MODEL=small.en` in `.env` |
 | Microphone permission denied | macOS hasn't granted access | Go to System Settings → Privacy & Security → Microphone → enable Terminal (or your app) |
@@ -145,6 +164,6 @@ Voice mode uses a persistent context keyed to the machine: `voice-<hostname>`. C
 | `src/voice.js` | Entry point — initialises tools, starts monitors, calls `runVoice()` |
 | `src/interfaces/voice/index.js` | Push-to-talk REPL loop, approval callbacks, `waitForEnter()` |
 | `src/interfaces/voice/stt.js` | `resolveModel()`, `startRecording()` (sox), `transcribe()` (whisper-cli) |
-| `src/interfaces/voice/tts.js` | `speak()` — macOS `say` wrapper, silent on error |
-| `src/config.js` | `VOICE_WHISPER_MODEL` |
+| `src/interfaces/voice/tts.js` | `speak()` — optional MLX TTS Studio client with macOS `say` fallback |
+| `src/config.js` | Voice STT/TTS environment variables |
 | `src/__tests__/interfaces/voice.test.js` | Unit tests for TTS, STT, and model resolution |

@@ -12,6 +12,14 @@ const app = new App({
   socketMode: true,
 });
 
+// Bolt hardcodes a 5-second ping timeout in the underlying SocketModeClient.
+// On home networks / Mac minis this triggers false disconnects, dropping
+// interactive events (approval button clicks) during the reconnection window.
+// Increase to 30s before start() so the value propagates to the WebSocket.
+if (app.receiver?.client) {
+  app.receiver.client.clientPingTimeoutMS = 30_000;
+}
+
 registerCommandHandlers(app);
 registerMessageHandlers(app);
 registerInteractionHandlers(app);
