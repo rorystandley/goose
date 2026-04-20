@@ -5,8 +5,17 @@ import { EventEmitter } from 'events';
 // Hoisted mock objects
 // ---------------------------------------------------------------------------
 
-const mockConfig    = vi.hoisted(() => ({ VOICE_WHISPER_MODEL: 'base.en' }));
+const mockConfig    = vi.hoisted(() => ({
+  VOICE_WHISPER_MODEL: 'base.en',
+  VOICE_TTS_BACKEND: 'say',
+  VOICE_MLX_TTS_URL: 'http://127.0.0.1:7860',
+  VOICE_MLX_TTS_MODEL: 'test-tts-model',
+  VOICE_MLX_TTS_VOICE: 'casual_male',
+  VOICE_MLX_TTS_LANGUAGE: 'en',
+  VOICE_MLX_TTS_TIMEOUT_MS: 5000,
+}));
 const mockSpawn     = vi.hoisted(() => vi.fn());
+const mockFetch     = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
 const mockUnlink    = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
@@ -15,6 +24,7 @@ const mockUnlink    = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 // ---------------------------------------------------------------------------
 
 vi.mock('child_process', () => ({ spawn: mockSpawn }));
+vi.mock('node-fetch',    () => ({ default: mockFetch }));
 vi.mock('fs',            () => ({ existsSync: mockExistsSync }));
 vi.mock('fs/promises',   () => ({ unlink: mockUnlink }));
 
@@ -38,7 +48,7 @@ function makeMockProc() {
   const proc = new EventEmitter();
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
-  proc.kill   = vi.fn(signal => {
+  proc.kill   = vi.fn(_signal => {
     setImmediate(() => proc.emit('close', 0));
   });
   return proc;
@@ -49,7 +59,15 @@ function makeMockProc() {
 // ---------------------------------------------------------------------------
 
 describe('speak()', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockConfig.VOICE_TTS_BACKEND = 'say';
+    mockConfig.VOICE_MLX_TTS_URL = 'http://127.0.0.1:7860';
+    mockConfig.VOICE_MLX_TTS_MODEL = 'test-tts-model';
+    mockConfig.VOICE_MLX_TTS_VOICE = 'casual_male';
+    mockConfig.VOICE_MLX_TTS_LANGUAGE = 'en';
+    mockConfig.VOICE_MLX_TTS_TIMEOUT_MS = 5000;
+  });
 
   it('spawns say with the provided text', async () => {
     const proc = makeMockProc();
@@ -78,6 +96,77 @@ describe('speak()', () => {
     mockSpawn.mockReturnValue(proc);
 
     const promise = speak('Test message');
+    proc.emit('close', 0);
+
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('calls MLX TTS Studio and plays returned audio when configured', async () => {
+    mockConfig.VOICE_TTS_BACKEND = 'mlx';
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ audio_path: '/tmp/goose-tts.wav' }),
+    });
+    const proc = makeMockProc();
+    mockSpawn.mockReturnValue(proc);
+
+    const promise = speak('Hello Goose');
+
+    await vi.waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:7860/synthesize',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      expect(mockSpawn).toHaveBeenCalledWith('afplay', ['/tmp/goose-tts.wav']);
+    });
+    proc.emit('close', 0);
+
+    await expect(promise).resolves.toBeUndefined();
+    expect(mockSpawn).not.toHaveBeenCalledWith('say', ['Hello Goose']);
+  });
+
+  it('falls back to say when afplay exits non-zero after MLX returns audio_path', async () => {
+    mockConfig.VOICE_TTS_BACKEND = 'mlx';
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ audio_path: '/tmp/goose-tts.wav' }),
+    });
+    const afplayProc = makeMockProc();
+    const sayProc = makeMockProc();
+    mockSpawn
+      .mockReturnValueOnce(afplayProc)
+      .mockReturnValueOnce(sayProc);
+
+    const promise = speak('Fallback please');
+
+    await vi.waitFor(() => {
+      expect(mockSpawn).toHaveBeenCalledWith('afplay', ['/tmp/goose-tts.wav']);
+    });
+
+    afplayProc.emit('close', 1);
+
+    await vi.waitFor(() => {
+      expect(mockSpawn).toHaveBeenCalledWith('say', ['Fallback please']);
+    });
+
+    sayProc.emit('close', 0);
+
+    await expect(promise).resolves.toBeUndefined();
+  });
+  it('falls back to say when MLX TTS is unavailable', async () => {
+    mockConfig.VOICE_TTS_BACKEND = 'mlx';
+    mockFetch.mockRejectedValue(new Error('server offline'));
+    const proc = makeMockProc();
+    mockSpawn.mockReturnValue(proc);
+
+    const promise = speak('Fallback please');
+
+    await vi.waitFor(() => {
+      expect(mockSpawn).toHaveBeenCalledWith('say', ['Fallback please']);
+    });
     proc.emit('close', 0);
 
     await expect(promise).resolves.toBeUndefined();
