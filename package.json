@@ -17,8 +17,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@goose-plugins/backup": "file:../goose-plugins/backup",
-    "@goose-plugins/twitter": "file:../goose-plugins/twitter",
     "@slack/bolt": "^3.19.0",
     "dotenv": "^16.4.5",
     "node-cron": "^4.2.1",
