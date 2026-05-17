@@ -218,7 +218,10 @@ describe('startMonitors()', () => {
     fs.readFileSync.mockReturnValueOnce(monitorsJson([monitor]));
     const ids = startMonitors();
     await vi.advanceTimersByTimeAsync(200);
-    expect(mockSpeak).toHaveBeenCalledWith('agent result');
+    expect(mockSpeak).toHaveBeenCalledWith('agent result', expect.objectContaining({
+      source: 'monitor',
+      monitorName: 'test-monitor',
+    }));
     stopMonitors(ids);
   });
 
@@ -235,7 +238,10 @@ describe('startMonitors()', () => {
     fs.readFileSync.mockReturnValueOnce(monitorsJson([monitor]));
     const ids = startMonitors();
     await vi.advanceTimersByTimeAsync(200);
-    expect(mockSpeak).toHaveBeenCalledWith('Goose monitor test-monitor failed: LLM offline');
+    expect(mockSpeak).toHaveBeenCalledWith(
+      'Goose monitor test-monitor failed: LLM offline',
+      expect.objectContaining({ source: 'monitor', monitorName: 'test-monitor', mode: 'agent-failure' }),
+    );
     stopMonitors(ids);
   });
 

@@ -1,7 +1,10 @@
 import { spawn } from 'child_process';
+import path from 'path';
 import fetch from 'node-fetch';
 import config from '../../config.js';
 import { createLogger } from '../../logger.js';
+import { addAudio } from '../../audio/store.js';
+import { broadcast } from '../web/sse.js';
 
 const log = createLogger('voice:tts');
 
@@ -53,13 +56,38 @@ async function playAudio(audioPath) {
   await processPromise('afplay', [audioPath]);
 }
 
+async function recordAudioEntry(text, payload, context = {}) {
+  try {
+    const entry = await addAudio({
+      path: payload.audio_path,
+      filename: path.basename(payload.audio_path ?? ''),
+      createdAt: new Date().toISOString(),
+      text,
+      source: context.source ?? 'ad-hoc',
+      missionName: context.missionName ?? null,
+      monitorName: context.monitorName ?? null,
+      contextId: context.contextId ?? null,
+      model: payload.model ?? null,
+      voice: payload.voice ?? null,
+      duration: payload.duration_seconds ?? null,
+      format: payload.format ?? 'wav',
+    });
+    broadcast('audioCreated', entry);
+    return entry;
+  } catch (err) {
+    log.warn('Failed to record audio manifest entry', { error: err.message });
+    return null;
+  }
+}
+
 /**
  * Speak text through a local MLX TTS Studio server.
  *
  * @param {string} text
+ * @param {object} [context]   Optional attribution: { source, missionName, monitorName, contextId }
  * @returns {Promise<void>}
  */
-export async function speakWithMlx(text) {
+export async function speakWithMlx(text, context = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
@@ -99,6 +127,7 @@ export async function speakWithMlx(text) {
       throw new Error('MLX TTS response did not include audio_path');
     }
 
+    await recordAudioEntry(text, payload, context);
     await playAudio(payload.audio_path);
   } finally {
     clearTimeout(timeout);
@@ -110,12 +139,13 @@ export async function speakWithMlx(text) {
  * macOS `say` so voice mode still works if the local server is offline.
  *
  * @param {string} text
+ * @param {object} [context]   Optional attribution: { source, missionName, monitorName, contextId }
  * @returns {Promise<void>}
  */
-export async function speak(text) {
+export async function speak(text, context = {}) {
   if ((config.VOICE_TTS_BACKEND || 'say').toLowerCase() === 'mlx') {
     try {
-      await speakWithMlx(text);
+      await speakWithMlx(text, context);
       return;
     } catch (err) {
       log.warn('MLX TTS unavailable, falling back to say', { error: err.message });

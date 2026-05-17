@@ -150,7 +150,7 @@ export async function runVoice() {
       clearHistory(VOICE_CONTEXT_ID);
       const msg = 'Memory cleared.';
       console.log(`  ${c.dim}🧹 ${msg}${c.reset}\n`);
-      await speak(msg);
+      await speak(msg, { source: 'voice', contextId: VOICE_CONTEXT_ID });
       continue;
     }
 
@@ -164,11 +164,11 @@ export async function runVoice() {
       const msg = `Error: ${err.message}`;
       console.log(`\n  ${c.red}✗ ${msg}${c.reset}\n`);
       log.error('Voice task failed', { error: err.message });
-      await speak('Sorry, something went wrong.');
+      await speak('Sorry, something went wrong.', { source: 'voice', contextId: VOICE_CONTEXT_ID });
       continue;
     }
 
     console.log(`\n  ${c.green}${c.bold}Goose:${c.reset} ${c.green}${response}${c.reset}\n`);
-    await speak(response);
+    await speak(response, { source: 'voice', contextId: VOICE_CONTEXT_ID });
   }
 }
