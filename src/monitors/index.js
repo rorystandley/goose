@@ -6,16 +6,61 @@ import { check as checkUrl } from './types/url.js';
 import { check as checkFile } from './types/file.js';
 import { check as checkSystem } from './types/system.js';
 import { speak } from '../interfaces/voice/tts.js';
+import { broadcast } from '../interfaces/web/sse.js';
 
 const log = createLogger('monitors');
 
-async function speakSafely(text, logContext) {
+// Module-level state for the Ops tab to read via getMonitorStates().
+// Populated by startMonitors() on each interval tick.
+const runtimeState = new Map();
+
+async function speakSafely(text, speechContext) {
   if (!text?.trim()) return;
   try {
-    await speak(text);
+    await speak(text, speechContext);
   } catch (err) {
-    log.warn('Speech output failed', { ...logContext, error: err.message });
+    log.warn('Speech output failed', { ...speechContext, error: err.message });
   }
+}
+
+function setMonitorState(name, patch) {
+  const previous = runtimeState.get(name) ?? {};
+  const next = { ...previous, ...patch, updatedAt: new Date().toISOString() };
+  runtimeState.set(name, next);
+  broadcast('monitorStateChanged', { name, ...next });
+}
+
+/**
+ * Return the current runtime state for all monitors that have been observed
+ * (and configured monitors that haven't yet had a check). Used by the Ops tab.
+ *
+ * @returns {Array<{name, type, enabled, interval, cooldown, lastCheck, lastTrigger, lastValue, status, lastError}>}
+ */
+export function getMonitorStates() {
+  const monitors = loadMonitors();
+  return monitors.map(m => {
+    const runtime = runtimeState.get(m.name) ?? {};
+    return {
+      name: m.name,
+      type: m.type,
+      enabled: m.enabled !== false,
+      interval: m.interval ?? '5m',
+      cooldown: m.cooldown ?? '10m',
+      threshold: m.threshold ?? null,
+      metric: m.metric ?? null,
+      url: m.url ?? null,
+      lastCheck: runtime.lastCheck ?? null,
+      lastTrigger: runtime.lastTrigger ?? null,
+      lastValue: runtime.lastValue ?? null,
+      status: runtime.status ?? 'idle',
+      lastError: runtime.lastError ?? null,
+    };
+  });
+}
+
+// Test/CLI helper to drop runtime state between runs.
+export function resetMonitorState() {
+  runtimeState.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -160,12 +205,23 @@ export function startMonitors(notify = null) {
         result = monitor.type === 'url'
           ? await checker(monitor, state)
           : checker(monitor, state);
+        setMonitorState(monitor.name, {
+          lastCheck: new Date().toISOString(),
+          lastValue: result.vars ?? null,
+          status: result.triggered ? 'triggered' : 'ok',
+          lastError: null,
+        });
       } catch (err) {
         log.error('Monitor check failed', { name: monitor.name, error: err.message });
+        setMonitorState(monitor.name, {
+          lastCheck: new Date().toISOString(),
+          status: 'failed',
+          lastError: err.message,
+        });
         if (monitor.speakOnFailure) {
           await speakSafely(
             `Goose monitor ${monitor.name} check failed: ${err.message}`,
-            { name: monitor.name, mode: 'check-failure' },
+            { source: 'monitor', monitorName: monitor.name, contextId, mode: 'check-failure' },
           );
         }
         return;
@@ -178,9 +234,11 @@ export function startMonitors(notify = null) {
       const now = Date.now();
       if (now - last < cooldownMs) {
         log.debug('Monitor cooldown active — trigger suppressed', { name: monitor.name });
+        setMonitorState(monitor.name, { status: 'cooldown' });
         return;
       }
       lastTriggered.set(monitor.name, now);
+      setMonitorState(monitor.name, { lastTrigger: new Date().toISOString() });
 
       const task = interpolate(monitor.task, result.vars);
       log.info('Monitor triggered', { name: monitor.name, vars: result.vars });
@@ -194,14 +252,17 @@ export function startMonitors(notify = null) {
         }
 
         if (monitor.speakOnFailure) {
-          await speakSafely(agentResult, { name: monitor.name, mode: 'trigger' });
+          await speakSafely(agentResult, {
+            source: 'monitor', monitorName: monitor.name, contextId, mode: 'trigger',
+          });
         }
       } catch (err) {
         log.error('Monitor agent failed', { name: monitor.name, error: err.message });
+        setMonitorState(monitor.name, { status: 'failed', lastError: err.message });
         if (monitor.speakOnFailure) {
           await speakSafely(
             `Goose monitor ${monitor.name} failed: ${err.message}`,
-            { name: monitor.name, mode: 'agent-failure' },
+            { source: 'monitor', monitorName: monitor.name, contextId, mode: 'agent-failure' },
           );
         }
       }

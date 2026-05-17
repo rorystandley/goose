@@ -48,6 +48,8 @@ const config = Object.freeze({
   MONITORS_ALLOW_DANGEROUS: process.env.MONITORS_ALLOW_DANGEROUS === 'true',
   KANBAN_PATH: process.env.KANBAN_PATH || path.join(process.cwd(), 'data', 'kanban.json'),
   KANBAN_POLL_INTERVAL: parseInt(process.env.KANBAN_POLL_INTERVAL || '60000', 10),
+  AUDIO_PATH: process.env.AUDIO_PATH || path.join(process.cwd(), 'data', 'audio.json'),
+  AUDIO_OUTPUT_DIRS: (process.env.AUDIO_OUTPUT_DIRS || '').split(',').map(s => s.trim()).filter(Boolean),
   WEB_ENABLED: process.env.WEB_ENABLED === 'true',
   WEB_PORT: parseInt(process.env.WEB_PORT || '3000', 10),
   // Multi-model routing — leave empty to always use OLLAMA_MODEL

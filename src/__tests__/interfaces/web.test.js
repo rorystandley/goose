@@ -14,6 +14,18 @@ const mockResolveApproval= vi.hoisted(() => vi.fn());
 const mockSseWrite       = vi.hoisted(() => vi.fn());
 const mockSseAddClient   = vi.hoisted(() => vi.fn());
 const mockSseRemoveClient= vi.hoisted(() => vi.fn());
+const mockSseBroadcast   = vi.hoisted(() => vi.fn());
+
+// Ops tab dependencies — mocked so we can assert handler contracts without IO
+const mockGetAudio              = vi.hoisted(() => vi.fn(() => []));
+const mockGetAudioById          = vi.hoisted(() => vi.fn(() => null));
+const mockDeleteAudio           = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockLoadMissions          = vi.hoisted(() => vi.fn(() => []));
+const mockExecuteMission        = vi.hoisted(() => vi.fn().mockResolvedValue({ contextId: 'x', result: null, error: null }));
+const mockGetAllMissionStates   = vi.hoisted(() => vi.fn(() => []));
+const mockLoadMonitors          = vi.hoisted(() => vi.fn(() => []));
+const mockGetMonitorStates      = vi.hoisted(() => vi.fn(() => []));
+const mockLoadPluginMetadata    = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 
 // Mock HTTP server returned by http.createServer
 const mockHttpServer = vi.hoisted(() => ({
@@ -43,14 +55,50 @@ vi.mock('../../interfaces/web/sse.js', () => ({
   write:        mockSseWrite,
   addClient:    mockSseAddClient,
   removeClient: mockSseRemoveClient,
+  broadcast:    mockSseBroadcast,
+}));
+
+vi.mock('../../audio/store.js', () => ({
+  getAudio:     mockGetAudio,
+  getAudioById: mockGetAudioById,
+  deleteAudio:  mockDeleteAudio,
+  addAudio:     vi.fn(),
+}));
+
+vi.mock('../../scheduler/index.js', () => ({
+  loadMissions:   mockLoadMissions,
+  executeMission: mockExecuteMission,
+}));
+
+vi.mock('../../scheduler/state.js', () => ({
+  getAllMissionStates: mockGetAllMissionStates,
+}));
+
+vi.mock('../../monitors/index.js', () => ({
+  loadMonitors:     mockLoadMonitors,
+  getMonitorStates: mockGetMonitorStates,
+}));
+
+vi.mock('../../plugins/metadata.js', () => ({
+  loadPluginMetadata: mockLoadPluginMetadata,
 }));
 
 vi.mock('../../config.js', () => ({
   default: {
-    AGENT_NAME:   'TestGoose',
-    OLLAMA_MODEL: 'test-model',
-    WEB_ENABLED:  false,
-    WEB_PORT:     3001,
+    AGENT_NAME:        'TestGoose',
+    OLLAMA_MODEL:      'test-model',
+    FAST_MODEL:        '',
+    SMART_MODEL:       '',
+    ROUTING_MODEL:     '',
+    LLM_BACKEND:       'ollama',
+    OLLAMA_HOST:       'http://localhost:11434',
+    VOICE_TTS_BACKEND: 'say',
+    VOICE_MLX_TTS_MODEL: 'mlx-community/Kokoro-82M-bf16',
+    VOICE_MLX_TTS_VOICE: 'af_heart',
+    AUDIO_OUTPUT_DIRS: [],
+    WEB_ENABLED:       false,
+    WEB_PORT:          3001,
+    KANBAN_POLL_INTERVAL: 60000,
   },
 }));
 
@@ -534,5 +582,194 @@ describe('stopWebServer', () => {
   it('does nothing when no server is running', async () => {
     await expect(stopWebServer()).resolves.not.toThrow();
     expect(mockHttpServer.close).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ops endpoints — /api/system, /api/audio, /api/missions, /api/monitors, /api/plugins
+// ---------------------------------------------------------------------------
+
+function bodyJson(res) {
+  return JSON.parse(res._chunks.join(''));
+}
+
+describe('handleRequest — GET /api/system', () => {
+  it('returns 200 with agent + model + ttsBackend', async () => {
+    const req = mockReq('GET', '/api/system');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
+    const body = bodyJson(res);
+    expect(body).toMatchObject({
+      agentName: 'TestGoose',
+      model: 'test-model',
+      ttsBackend: 'say',
+      llmBackend: 'ollama',
+    });
+    expect(body.uptime).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('handleRequest — GET /api/audio', () => {
+  it('returns empty array when no audio entries', async () => {
+    mockGetAudio.mockReturnValueOnce([]);
+    const req = mockReq('GET', '/api/audio');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(bodyJson(res)).toEqual({ audio: [] });
+  });
+
+  it('sorts entries newest first', async () => {
+    mockGetAudio.mockReturnValueOnce([
+      { id: 'a', createdAt: '2026-05-01T00:00:00Z' },
+      { id: 'b', createdAt: '2026-05-15T00:00:00Z' },
+      { id: 'c', createdAt: '2026-05-10T00:00:00Z' },
+    ]);
+    const req = mockReq('GET', '/api/audio');
+    const res = mockRes();
+    await handleRequest(req, res);
+    const ids = bodyJson(res).audio.map(a => a.id);
+    expect(ids).toEqual(['b', 'c', 'a']);
+  });
+
+  it('flags entries whose file is missing on disk', async () => {
+    mockGetAudio.mockReturnValueOnce([
+      { id: 'gone', path: '/nonexistent/file.wav', createdAt: '2026-05-01T00:00:00Z' },
+    ]);
+    const req = mockReq('GET', '/api/audio');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(bodyJson(res).audio[0].missing).toBe(true);
+    expect(bodyJson(res).audio[0].playable).toBe(false);
+  });
+});
+
+describe('handleRequest — GET /api/audio/:id/stream', () => {
+  it('returns 404 when id is not in the manifest', async () => {
+    mockGetAudioById.mockReturnValueOnce(null);
+    const req = mockReq('GET', '/api/audio/missing-id/stream');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+  });
+
+  it('returns 403 when AUDIO_OUTPUT_DIRS is not configured', async () => {
+    mockGetAudioById.mockReturnValueOnce({ id: 'a', path: '/tmp/x.wav', format: 'wav' });
+    const req = mockReq('GET', '/api/audio/a/stream');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+  });
+});
+
+describe('handleRequest — DELETE /api/audio/:id', () => {
+  it('returns 404 when id is not in the manifest', async () => {
+    mockGetAudioById.mockReturnValueOnce(null);
+    const req = mockReq('DELETE', '/api/audio/nope');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+    expect(mockDeleteAudio).not.toHaveBeenCalled();
+  });
+
+  it('deletes entry + broadcasts audioDeleted when entry exists', async () => {
+    mockGetAudioById.mockReturnValueOnce({ id: 'a', path: '/tmp/outside.wav', format: 'wav' });
+    mockDeleteAudio.mockResolvedValueOnce({ id: 'a' });
+    const req = mockReq('DELETE', '/api/audio/a');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(mockDeleteAudio).toHaveBeenCalledWith('a');
+    expect(mockSseBroadcast).toHaveBeenCalledWith('audioDeleted', { id: 'a' });
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
+  });
+});
+
+describe('handleRequest — GET /api/missions', () => {
+  it('returns enriched missions joined with state + nextRun', async () => {
+    mockLoadMissions.mockReturnValueOnce([
+      { name: 'morning', cron: '0 8 * * MON-FRI', timezone: 'UTC', enabled: true },
+    ]);
+    mockGetAllMissionStates.mockReturnValueOnce([
+      { name: 'morning', status: 'completed', lastRun: '2026-05-17T08:00:00Z', lastError: null, lastDuration: 4200 },
+    ]);
+    const req = mockReq('GET', '/api/missions');
+    const res = mockRes();
+    await handleRequest(req, res);
+    const body = bodyJson(res);
+    expect(body.missions).toHaveLength(1);
+    expect(body.missions[0]).toMatchObject({
+      name: 'morning',
+      status: 'completed',
+      lastDuration: 4200,
+    });
+    expect(body.missions[0].nextRun).toMatch(/T\d{2}:\d{2}:\d{2}/);
+  });
+
+  it('handles invalid cron expressions gracefully (nextRun: null)', async () => {
+    mockLoadMissions.mockReturnValueOnce([
+      { name: 'broken', cron: 'not a cron', timezone: 'UTC', enabled: true },
+    ]);
+    mockGetAllMissionStates.mockReturnValueOnce([]);
+    const req = mockReq('GET', '/api/missions');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(bodyJson(res).missions[0].nextRun).toBeNull();
+  });
+});
+
+describe('handleRequest — POST /api/missions/:name/trigger', () => {
+  it('returns 404 when mission is not configured', async () => {
+    mockLoadMissions.mockReturnValueOnce([]);
+    const req = mockReq('POST', '/api/missions/nope/trigger');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+    expect(mockExecuteMission).not.toHaveBeenCalled();
+  });
+
+  it('returns 202 and invokes executeMission with source=manual', async () => {
+    mockLoadMissions.mockReturnValueOnce([{ name: 'morning', cron: '0 8 * * *' }]);
+    const req = mockReq('POST', '/api/missions/morning/trigger');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
+    expect(mockExecuteMission).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'morning' }),
+      expect.objectContaining({ source: 'manual' }),
+    );
+  });
+});
+
+describe('handleRequest — GET /api/monitors', () => {
+  it('returns monitor states', async () => {
+    mockGetMonitorStates.mockReturnValueOnce([
+      { name: 'server-health', type: 'url', status: 'ok', lastCheck: '2026-05-17T10:00:00Z' },
+    ]);
+    const req = mockReq('GET', '/api/monitors');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(bodyJson(res).monitors).toHaveLength(1);
+    expect(bodyJson(res).monitors[0].name).toBe('server-health');
+  });
+});
+
+describe('handleRequest — GET /api/plugins', () => {
+  it('returns plugin metadata list', async () => {
+    mockLoadPluginMetadata.mockResolvedValueOnce([
+      { source: 'local', packageName: 'hello', version: '1.0.0', tools: [{ name: 'say_hi', riskLevel: 'safe' }] },
+    ]);
+    const req = mockReq('GET', '/api/plugins');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(bodyJson(res).plugins).toHaveLength(1);
+    expect(bodyJson(res).plugins[0].packageName).toBe('hello');
+  });
+
+  it('returns 500 if plugin metadata loading throws', async () => {
+    mockLoadPluginMetadata.mockRejectedValueOnce(new Error('disk failure'));
+    const req = mockReq('GET', '/api/plugins');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(500, expect.any(Object));
   });
 });

@@ -3,11 +3,20 @@ import { getHistory, clearHistory, getContextIds } from '../../agent/memory.js';
 import { resolveApproval } from '../../agent/approvals.js';
 import { createLogger } from '../../logger.js';
 import { readFile } from 'node:fs/promises';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import config from '../../config.js';
 import { addClient, removeClient, write as sseWrite, broadcast } from './sse.js';
 import { makeCallbacks } from './callbacks.js';
 import { getHtml } from './public.js';
 import { getTasks, getTask, createTask, updateTask, deleteTask } from '../../kanban/store.js';
+import { getAudio, getAudioById, deleteAudio } from '../../audio/store.js';
+import { loadMissions, executeMission } from '../../scheduler/index.js';
+import { getAllMissionStates } from '../../scheduler/state.js';
+import { loadMonitors, getMonitorStates } from '../../monitors/index.js';
+import { loadPluginMetadata } from '../../plugins/metadata.js';
+import { CronExpressionParser } from 'cron-parser';
 
 const log = createLogger('web');
 const html = getHtml(config.AGENT_NAME, config.OLLAMA_MODEL, config.KANBAN_POLL_INTERVAL);
@@ -20,13 +29,56 @@ const staticAssets = new Map([
   ['/assets/android-chrome-192x192.png', new URL('../../../docs/assets/android-chrome-192x192.png', import.meta.url)],
   ['/assets/android-chrome-512x512.png', new URL('../../../docs/assets/android-chrome-512x512.png', import.meta.url)],
   ['/assets/site.webmanifest', new URL('../../../docs/assets/site.webmanifest', import.meta.url)],
+  ['/app.css', new URL('./static/app.css', import.meta.url)],
+  ['/app.js', new URL('./static/app.js', import.meta.url)],
 ]);
 
 const contentTypes = new Map([
   ['.png', 'image/png'],
   ['.ico', 'image/x-icon'],
   ['.webmanifest', 'application/manifest+json'],
+  ['.css', 'text/css; charset=utf-8'],
+  ['.js', 'application/javascript; charset=utf-8'],
 ]);
+
+const audioContentTypes = new Map([
+  ['wav', 'audio/wav'],
+  ['flac', 'audio/flac'],
+  ['mp3', 'audio/mpeg'],
+  ['m4a', 'audio/mp4'],
+  ['ogg', 'audio/ogg'],
+]);
+
+// Resolve AUDIO_OUTPUT_DIRS once at module load — these become the canonical
+// allowlist for streaming/deleting audio files. We resolve symlinks so a later
+// realpath check on a file path is meaningful.
+const audioAllowedRoots = (config.AUDIO_OUTPUT_DIRS ?? [])
+  .map(p => {
+    try { return fs.realpathSync(p); } catch { return null; }
+  })
+  .filter(Boolean);
+
+/**
+ * Validate that `filePath` resolves to a real file inside one of the configured
+ * AUDIO_OUTPUT_DIRS roots. Returns the resolved absolute path on success, or
+ * null if the path is outside every root, is a symlink escaping the roots, or
+ * does not exist.
+ */
+function resolveAudioPath(filePath) {
+  if (!filePath || audioAllowedRoots.length === 0) return null;
+  let real;
+  try {
+    real = fs.realpathSync(filePath);
+  } catch {
+    return null;
+  }
+  for (const root of audioAllowedRoots) {
+    const rel = path.relative(root, real);
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return real;
+    if (rel === '') return real;
+  }
+  return null;
+}
 
 function getContentType(path) {
   if (path.endsWith('.webmanifest')) return contentTypes.get('.webmanifest');
@@ -251,6 +303,170 @@ export async function handleRequest(req, res) {
       });
 
     json(res, 202, { contextId });
+    return;
+  }
+
+  // ── Audio routes ────────────────────────────────────────────────
+  const audioStreamMatch = path.match(/^\/api\/audio\/([^/]+)\/stream$/);
+  const audioIdMatch     = path.match(/^\/api\/audio\/([^/]+)$/);
+
+  // GET /api/audio — list all manifest entries (newest first), flag missing files
+  if (method === 'GET' && path === '/api/audio') {
+    const entries = getAudio()
+      .slice()
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+      .map(entry => ({
+        ...entry,
+        missing: !entry.path || !fs.existsSync(entry.path),
+        playable: !!resolveAudioPath(entry.path),
+      }));
+    json(res, 200, { audio: entries });
+    return;
+  }
+
+  // GET /api/audio/:id/stream — stream audio file (security validated)
+  if (method === 'GET' && audioStreamMatch) {
+    const id = audioStreamMatch[1];
+    const entry = getAudioById(id);
+    if (!entry) { json(res, 404, { error: 'audio not found' }); return; }
+
+    const realPath = resolveAudioPath(entry.path);
+    if (!realPath) {
+      json(res, 403, { error: 'audio path is outside AUDIO_OUTPUT_DIRS or missing' });
+      return;
+    }
+
+    try {
+      const stat = await fsp.stat(realPath);
+      const contentType = audioContentTypes.get((entry.format ?? 'wav').toLowerCase()) ?? 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': stat.size,
+        'Accept-Ranges': 'none',
+        'Cache-Control': 'private, max-age=0',
+      });
+      fs.createReadStream(realPath).pipe(res);
+    } catch (err) {
+      log.warn('Audio stream failed', { id, error: err.message });
+      json(res, 404, { error: 'audio file missing' });
+    }
+    return;
+  }
+
+  // DELETE /api/audio/:id — remove manifest entry + unlink file (tolerant)
+  if (method === 'DELETE' && audioIdMatch) {
+    const id = audioIdMatch[1];
+    const entry = getAudioById(id);
+    if (!entry) { json(res, 404, { error: 'audio not found' }); return; }
+
+    const realPath = resolveAudioPath(entry.path);
+    if (realPath) {
+      try { await fsp.unlink(realPath); }
+      catch (err) {
+        if (err.code !== 'ENOENT') log.warn('Audio unlink failed', { id, error: err.message });
+      }
+    } else {
+      log.debug('Skipping unlink — audio path outside AUDIO_OUTPUT_DIRS', { id });
+    }
+
+    await deleteAudio(id);
+    broadcast('audioDeleted', { id });
+    json(res, 200, {});
+    return;
+  }
+
+  // ── Mission routes ──────────────────────────────────────────────
+  const missionTriggerMatch = path.match(/^\/api\/missions\/([^/]+)\/trigger$/);
+
+  // GET /api/missions — list with state + nextRun
+  if (method === 'GET' && path === '/api/missions') {
+    const missions = loadMissions();
+    const states = new Map(getAllMissionStates().map(s => [s.name, s]));
+    const enriched = missions.map(m => {
+      let nextRun = null;
+      try {
+        const it = CronExpressionParser.parse(m.cron, {
+          tz: m.timezone ?? 'UTC',
+          currentDate: new Date(),
+        });
+        nextRun = it.next().toDate().toISOString();
+      } catch {
+        nextRun = null;
+      }
+      const state = states.get(m.name) ?? { status: 'idle' };
+      return {
+        name: m.name,
+        cron: m.cron,
+        timezone: m.timezone ?? 'UTC',
+        enabled: m.enabled !== false,
+        contextId: m.contextId ?? `mission-${m.name}`,
+        speakResponse: !!m.speakResponse,
+        speakOnFailure: !!m.speakOnFailure,
+        slackChannel: m.slackChannel ?? null,
+        hasPhases: Array.isArray(m.phases),
+        isDirect: !!m.direct,
+        nextRun,
+        status: state.status,
+        lastRun: state.lastRun ?? null,
+        lastError: state.lastError ?? null,
+        lastDuration: state.lastDuration ?? null,
+      };
+    });
+    json(res, 200, { missions: enriched });
+    return;
+  }
+
+  // POST /api/missions/:name/trigger — invoke executeMission manually
+  if (method === 'POST' && missionTriggerMatch) {
+    const name = decodeURIComponent(missionTriggerMatch[1]);
+    const missions = loadMissions();
+    const mission = missions.find(m => m.name === name);
+    if (!mission) { json(res, 404, { error: 'mission not found' }); return; }
+
+    log.info('Manual mission trigger', { name });
+    // Fire-and-forget — state updates flow via SSE
+    executeMission(mission, { source: 'manual' }).catch(err => {
+      log.error('Manual mission trigger crashed', { name, error: err.message });
+    });
+    json(res, 202, { name, status: 'triggered' });
+    return;
+  }
+
+  // ── Monitor routes ──────────────────────────────────────────────
+  if (method === 'GET' && path === '/api/monitors') {
+    json(res, 200, { monitors: getMonitorStates() });
+    return;
+  }
+
+  // ── Plugin routes ───────────────────────────────────────────────
+  if (method === 'GET' && path === '/api/plugins') {
+    try {
+      const plugins = await loadPluginMetadata();
+      json(res, 200, { plugins });
+    } catch (err) {
+      log.error('Failed to load plugin metadata', { error: err.message });
+      json(res, 500, { error: 'failed to load plugins' });
+    }
+    return;
+  }
+
+  // ── System info ─────────────────────────────────────────────────
+  if (method === 'GET' && path === '/api/system') {
+    json(res, 200, {
+      agentName: config.AGENT_NAME,
+      model: config.OLLAMA_MODEL,
+      fastModel: config.FAST_MODEL || null,
+      smartModel: config.SMART_MODEL || null,
+      routingModel: config.ROUTING_MODEL || null,
+      llmBackend: config.LLM_BACKEND,
+      ollamaHost: config.OLLAMA_HOST,
+      ttsBackend: config.VOICE_TTS_BACKEND ?? 'say',
+      ttsModel: config.VOICE_MLX_TTS_MODEL ?? null,
+      ttsVoice: config.VOICE_MLX_TTS_VOICE ?? null,
+      audioOutputDirsConfigured: audioAllowedRoots.length > 0,
+      uptime: Math.round(process.uptime()),
+      startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+    });
     return;
   }
 

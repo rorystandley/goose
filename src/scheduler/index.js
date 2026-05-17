@@ -6,6 +6,7 @@ import { toolMap, initTools } from '../tools/index.js';
 import { createLogger } from '../logger.js';
 import config from '../config.js';
 import { speak } from '../interfaces/voice/tts.js';
+import { recordMissionStart, recordMissionComplete, recordMissionFailed } from './state.js';
 
 const log = createLogger('scheduler');
 
@@ -55,12 +56,12 @@ function buildMissionOutput(mission, result, startTime) {
   return result;
 }
 
-async function speakSafely(text, logContext) {
+async function speakSafely(text, speechContext) {
   if (!text?.trim()) return;
   try {
-    await speak(text);
+    await speak(text, speechContext);
   } catch (err) {
-    log.warn('Speech output failed', { ...logContext, error: err.message });
+    log.warn('Speech output failed', { ...speechContext, error: err.message });
   }
 }
 
@@ -271,6 +272,115 @@ export function makeSchedulerCallbacks(missionName, allowDangerous = false, capt
 }
 
 // ---------------------------------------------------------------------------
+// Mission execution
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a single mission end-to-end: resolve contextId, run direct/phased/single-task,
+ * save response if configured, notify Slack, speak output. Records state transitions
+ * via scheduler/state.js. Errors are caught and recorded; this function never throws.
+ *
+ * Same code path used by both scheduled cron firings and manual triggers from the UI.
+ *
+ * @param {object}   mission
+ * @param {object}   options
+ * @param {Function} options.notify   async (channel, name, output) => void
+ * @param {string}   options.source   'cron' | 'manual' — informational only
+ * @returns {{ contextId: string, result: string|null, error: Error|null }}
+ */
+export async function executeMission(mission, { notify = null, source = 'cron' } = {}) {
+  const baseContextId = mission.contextId || `mission-${mission.name}`;
+  const contextId = mission.freshContext
+    ? `${baseContextId}-${Date.now()}`
+    : baseContextId;
+  const startTime = new Date().toISOString();
+  const startedAt = Date.now();
+  log.info('Mission firing', { name: mission.name, contextId, source });
+
+  recordMissionStart(mission.name);
+
+  let result = null;
+  try {
+    if (mission.direct) {
+      log.info('Direct tool execution', { name: mission.name, tool: mission.direct });
+      result = await executeDirect(mission.direct, mission.directArgs ?? {});
+      log.info('Direct tool complete', { name: mission.name, resultChars: result?.length });
+    } else if (mission.phases) {
+      let previousResult = null;
+      for (const phase of mission.phases) {
+        let phaseTask = phase.task;
+        if (phase.injectPreviousResult && previousResult) {
+          phaseTask = `${phaseTask}\n\nContext from previous phase:\n${previousResult}`;
+        }
+        const phaseModel = phase.model || mission.model;
+        const useCapture = !!phase.captureToolResults;
+        const callbacks = makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false, useCapture);
+        const agentResult = await runAgent(phaseTask, contextId, {
+          ...callbacks,
+          ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
+          ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
+          ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
+          ...(phaseModel ? { model: phaseModel } : {}),
+        });
+        previousResult = useCapture ? (callbacks.getCapturedResults() || agentResult) : agentResult;
+        log.info('Phase complete', { mission: mission.name, phase: phase.name, responseChars: previousResult?.length });
+      }
+      result = previousResult;
+    } else {
+      result = await runAgent(
+        buildTask(mission),
+        contextId,
+        {
+          ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
+          ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
+          ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
+          ...(mission.model ? { model: mission.model } : {}),
+        },
+      );
+    }
+    log.info('Mission complete', { name: mission.name, responseChars: result?.length });
+
+    if (mission.saveResponseTo) {
+      try {
+        const savePath = path.join(process.cwd(), mission.saveResponseTo);
+        fs.mkdirSync(path.dirname(savePath), { recursive: true });
+        fs.writeFileSync(savePath, result, 'utf8');
+        log.info('Response saved', { name: mission.name, path: mission.saveResponseTo });
+      } catch (err) {
+        log.error('Failed to save response', { name: mission.name, error: err.message });
+      }
+    }
+
+    const output = buildMissionOutput(mission, result, startTime);
+
+    if (notify && mission.slackChannel) {
+      await notify(mission.slackChannel, mission.name, output);
+    }
+
+    if (mission.speakResponse) {
+      await speakSafely(output, {
+        source: 'mission',
+        missionName: mission.name,
+        contextId,
+      });
+    }
+
+    recordMissionComplete(mission.name, { durationMs: Date.now() - startedAt });
+    return { contextId, result, error: null };
+  } catch (err) {
+    log.error('Mission failed', { name: mission.name, error: err.message });
+    if (mission.speakOnFailure) {
+      await speakSafely(
+        `Goose mission ${mission.name} failed: ${err.message}`,
+        { source: 'mission', missionName: mission.name, contextId, mode: 'failure' },
+      );
+    }
+    recordMissionFailed(mission.name, { error: err.message, durationMs: Date.now() - startedAt });
+    return { contextId, result: null, error: err };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Scheduler start
 // ---------------------------------------------------------------------------
 
@@ -314,86 +424,7 @@ export async function startScheduler(notify = null) {
 
     const task = cron.schedule(
       mission.cron,
-      async () => {
-        const contextId = mission.freshContext
-          ? `${baseContextId}-${Date.now()}`
-          : baseContextId;
-        const startTime = new Date().toISOString();
-        log.info('Mission firing', { name: mission.name, contextId });
-        try {
-          let result;
-          if (mission.direct) {
-            // Direct tool execution — no LLM involved
-            log.info('Direct tool execution', { name: mission.name, tool: mission.direct });
-            result = await executeDirect(mission.direct, mission.directArgs ?? {});
-            log.info('Direct tool complete', { name: mission.name, resultChars: result?.length });
-          } else if (mission.phases) {
-            let previousResult = null;
-            for (const phase of mission.phases) {
-              let phaseTask = phase.task;
-              if (phase.injectPreviousResult && previousResult) {
-                phaseTask = `${phaseTask}\n\nContext from previous phase:\n${previousResult}`;
-              }
-              const phaseModel = phase.model || mission.model;
-              const useCapture = !!phase.captureToolResults;
-              const callbacks = makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false, useCapture);
-              const agentResult = await runAgent(phaseTask, contextId, {
-                ...callbacks,
-                ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
-                ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
-                ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
-                ...(phaseModel ? { model: phaseModel } : {}),
-              });
-              // When captureToolResults is set, use the raw tool outputs
-              // instead of the model's text response (prevents hallucination).
-              previousResult = useCapture ? (callbacks.getCapturedResults() || agentResult) : agentResult;
-              log.info('Phase complete', { mission: mission.name, phase: phase.name, responseChars: previousResult?.length });
-            }
-            result = previousResult;
-          } else {
-            result = await runAgent(
-              buildTask(mission),
-              contextId,
-              {
-                ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
-                ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
-                ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
-                ...(mission.model ? { model: mission.model } : {}),
-              },
-            );
-          }
-          log.info('Mission complete', { name: mission.name, responseChars: result?.length });
-
-          if (mission.saveResponseTo) {
-            try {
-              const savePath = path.join(process.cwd(), mission.saveResponseTo);
-              fs.mkdirSync(path.dirname(savePath), { recursive: true });
-              fs.writeFileSync(savePath, result, 'utf8');
-              log.info('Response saved', { name: mission.name, path: mission.saveResponseTo });
-            } catch (err) {
-              log.error('Failed to save response', { name: mission.name, error: err.message });
-            }
-          }
-
-          const output = buildMissionOutput(mission, result, startTime);
-
-          if (notify && mission.slackChannel) {
-            await notify(mission.slackChannel, mission.name, output);
-          }
-
-          if (mission.speakResponse) {
-            await speakSafely(output, { name: mission.name, mode: 'response' });
-          }
-        } catch (err) {
-          log.error('Mission failed', { name: mission.name, error: err.message });
-          if (mission.speakOnFailure) {
-            await speakSafely(
-              `Goose mission ${mission.name} failed: ${err.message}`,
-              { name: mission.name, mode: 'failure' },
-            );
-          }
-        }
-      },
+      () => executeMission(mission, { notify, source: 'cron' }),
       { timezone: mission.timezone || 'UTC' },
     );
 

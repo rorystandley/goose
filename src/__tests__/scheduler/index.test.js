@@ -46,7 +46,8 @@ vi.mock('../../config.js', () => ({
 }));
 
 // Import after mocks
-import { loadMissions, makeSchedulerCallbacks, startScheduler, buildTask, formatTechniqueList } from '../../scheduler/index.js';
+import { loadMissions, makeSchedulerCallbacks, startScheduler, buildTask, formatTechniqueList, executeMission } from '../../scheduler/index.js';
+import { resetState, getMissionState } from '../../scheduler/state.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -257,7 +258,10 @@ describe('startScheduler — cron callback', () => {
   it('speaks the mission output when speakResponse is true', async () => {
     const mission = { ...sampleMission, speakResponse: true };
     await runCronCallback(mission);
-    expect(mockSpeak).toHaveBeenCalledWith('Mission result text');
+    expect(mockSpeak).toHaveBeenCalledWith('Mission result text', expect.objectContaining({
+      source: 'mission',
+      missionName: 'morning-briefing',
+    }));
   });
 
   it('does not speak mission output by default', async () => {
@@ -269,7 +273,10 @@ describe('startScheduler — cron callback', () => {
     mockRunAgent.mockRejectedValueOnce(new Error('Ollama offline'));
     const mission = { ...sampleMission, speakOnFailure: true };
     await expect(runCronCallback(mission)).resolves.not.toThrow();
-    expect(mockSpeak).toHaveBeenCalledWith('Goose mission morning-briefing failed: Ollama offline');
+    expect(mockSpeak).toHaveBeenCalledWith(
+      'Goose mission morning-briefing failed: Ollama offline',
+      expect.objectContaining({ source: 'mission', missionName: 'morning-briefing', mode: 'failure' }),
+    );
   });
 
   it('does not let speech failures break a completed mission', async () => {
@@ -314,7 +321,10 @@ describe('startScheduler — postLastThought', () => {
   it('speaks the recorded thought when postLastThought and speakResponse are both true', async () => {
     const mission = { ...sampleMission, postLastThought: true, speakResponse: true };
     await runWithPostLastThought(mission, thoughtEntry);
-    expect(mockSpeak).toHaveBeenCalledWith('An interesting autonomous thought.');
+    expect(mockSpeak).toHaveBeenCalledWith('An interesting autonomous thought.', expect.objectContaining({
+      source: 'mission',
+      missionName: 'morning-briefing',
+    }));
   });
 
   it('falls back to model response when postLastThought:true but no thought was written', async () => {
@@ -607,5 +617,52 @@ describe('makeSchedulerCallbacks', () => {
 
   it('onToolResult does not throw', () => {
     expect(() => makeSchedulerCallbacks('test').onToolResult({ toolName: 'web_search', result: 'ok' })).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeMission — direct invocation (e.g. manual trigger from web UI)
+// ---------------------------------------------------------------------------
+describe('executeMission', () => {
+  beforeEach(() => {
+    resetState();
+  });
+
+  it('runs the mission and returns { contextId, result, error: null } on success', async () => {
+    mockRunAgent.mockResolvedValueOnce('manual run result');
+    const result = await executeMission(sampleMission, { source: 'manual' });
+    expect(result.contextId).toBe('mission-morning-briefing');
+    expect(result.result).toBe('manual run result');
+    expect(result.error).toBeNull();
+  });
+
+  it('returns { error } and does not throw when the agent fails', async () => {
+    mockRunAgent.mockRejectedValueOnce(new Error('LLM down'));
+    const result = await executeMission(sampleMission, { source: 'manual' });
+    expect(result.error?.message).toBe('LLM down');
+    expect(result.result).toBeNull();
+  });
+
+  it('records start → completed state transition on success', async () => {
+    mockRunAgent.mockResolvedValueOnce('ok');
+    await executeMission(sampleMission, { source: 'manual' });
+    const state = getMissionState('morning-briefing');
+    expect(state.status).toBe('completed');
+    expect(state.lastRun).toBeTruthy();
+  });
+
+  it('records start → failed state transition with error message', async () => {
+    mockRunAgent.mockRejectedValueOnce(new Error('boom'));
+    await executeMission(sampleMission, { source: 'manual' });
+    const state = getMissionState('morning-briefing');
+    expect(state.status).toBe('failed');
+    expect(state.lastError).toBe('boom');
+  });
+
+  it('passes through notify when slackChannel is set', async () => {
+    mockRunAgent.mockResolvedValueOnce('notify me');
+    const notify = vi.fn().mockResolvedValue(undefined);
+    await executeMission(sampleMission, { source: 'manual', notify });
+    expect(notify).toHaveBeenCalledWith('C123', 'morning-briefing', 'notify me');
   });
 });
