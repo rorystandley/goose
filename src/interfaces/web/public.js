@@ -40,53 +40,54 @@ export function getHtml(agentName, model, kanbanPollInterval = 60000) {
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <header id="header">
     <img class="logo" src="/assets/goose.png" alt="Goose logo">
-    <div>
-      <div class="title">${escAttr(agentName)}</div>
-      <div class="subtitle">${escAttr(model)}</div>
-    </div>
-    <div class="tab-bar">
-      <button class="tab active" data-tab="chat">Chat</button>
-      <button class="tab" data-tab="kanban">Kanban</button>
-      <button class="tab" data-tab="ops">Ops</button>
+    <div class="title">${escAttr(agentName)}</div>
+    <div class="header-stats">
+      <span class="header-model">${escAttr(model)}</span>
+      <span class="header-sep">·</span>
+      <span class="header-stat-label">tts</span><span id="ops-sys-tts">—</span>
+      <span class="header-sep">·</span>
+      <span class="header-stat-label">up</span><span id="ops-sys-uptime">—</span>
     </div>
     <div class="spacer"></div>
     <div class="status-dot" id="status-dot"></div>
     <div class="context-badge" id="context-display">—</div>
   </header>
 
-  <!-- ── Main: timeline + input ─────────────────────────────────── -->
-  <main id="main">
-    <div id="timeline">
-      <div id="empty-state">
-        <img class="empty-icon" src="/assets/goose.png" alt="" aria-hidden="true">
-        <p>Talk to me, Goose.</p>
-      </div>
-    </div>
+  <!-- ── Right panel: chat + memory stacked ─────────────────────── -->
+  <div id="right-panel">
 
-    <div id="input-bar">
-      <textarea
-        id="task-input"
-        placeholder="Ask Goose anything…"
-        rows="1"
-        autocomplete="off"
-        spellcheck="true"
-      ></textarea>
-      <button id="send-btn">Send ↑</button>
-    </div>
-  </main>
-
-  <!-- ── Memory panel ───────────────────────────────────────────── -->
-  <aside id="memory-panel">
-    <div id="memory-header">
-      <h2>Memory</h2>
-      <select id="context-select"><option value="">— select context —</option></select>
-      <div class="memory-actions">
-        <button class="btn-sm" id="refresh-btn">Refresh</button>
-        <button class="btn-sm danger" id="clear-btn">Clear</button>
+    <!-- ── Chat: timeline + input ──────────────────────────────── -->
+    <main id="main">
+      <div id="timeline">
+        <div id="empty-state">
+          <img class="empty-icon" src="/assets/goose.png" alt="" aria-hidden="true">
+          <p>Talk to me, Goose.</p>
+        </div>
       </div>
-    </div>
-    <div id="memory-list"><div class="mem-empty">Select a context to inspect memory.</div></div>
-  </aside>
+
+      <div id="input-bar">
+        <textarea
+          id="task-input"
+          placeholder="Ask Goose anything…"
+          rows="1"
+          autocomplete="off"
+          spellcheck="true"
+        ></textarea>
+        <button id="send-btn">Send ↑</button>
+      </div>
+    </main>
+
+    <!-- ── Memory panel ──────────────────────────────────────────── -->
+    <aside id="memory-panel">
+      <div id="memory-header">
+        <select id="context-select"><option value="">— context —</option></select>
+        <button class="btn-sm" id="refresh-btn">↺</button>
+        <button class="btn-sm danger" id="clear-btn">✕</button>
+      </div>
+      <div id="memory-list"><div class="mem-empty">Select a context to inspect memory.</div></div>
+    </aside>
+
+  </div>
 
   <!-- ── Kanban view ────────────────────────────────────────────── -->
   <div id="kanban-view">
@@ -142,18 +143,6 @@ export function getHtml(agentName, model, kanbanPollInterval = 60000) {
   <!-- ── Ops view (Mission Operator dashboard) ──────────────────── -->
   <div id="ops-view">
     <div id="ops-grid">
-
-      <!-- System tile -->
-      <section class="ops-tile ops-system">
-        <div class="ops-section-label">◀ SYSTEM ▶</div>
-        <div id="ops-system-body" class="ops-system-body">
-          <span class="ops-stat"><span class="ops-stat-key">CALLSIGN</span><span class="ops-stat-val" id="ops-sys-agent">—</span></span>
-          <span class="ops-stat"><span class="ops-stat-key">MODEL</span><span class="ops-stat-val" id="ops-sys-model">—</span></span>
-          <span class="ops-stat"><span class="ops-stat-key">TTS</span><span class="ops-stat-val" id="ops-sys-tts">—</span></span>
-          <span class="ops-stat"><span class="ops-stat-key">UPTIME</span><span class="ops-stat-val" id="ops-sys-uptime">—</span></span>
-          <span class="ops-stat"><span class="ops-stat-key">AUDIO</span><span class="ops-stat-val" id="ops-sys-audio">—</span></span>
-        </div>
-      </section>
 
       <!-- Audio library tile -->
       <section class="ops-tile ops-audio">

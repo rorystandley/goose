@@ -130,7 +130,7 @@ export async function handleRequest(req, res) {
       const body = await readFile(staticAssets.get(path));
       res.writeHead(200, {
         'Content-Type': getContentType(path),
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'no-cache',
       });
       res.end(body);
     } catch (err) {

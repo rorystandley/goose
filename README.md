@@ -249,6 +249,19 @@ That's it, the agent loop and tool definitions pick it up automatically.
 
 ---
 
+## Plugins
+
+Goose auto-discovers any npm package published under the `@goose-plugins/*` namespace. Each plugin exports a `tools` array of the same shape as above, and is scanned on startup.
+
+| Plugin | Description |
+|---|---|
+| [`@goose-plugins/twitter`](https://github.com/rorystandley/goose-plugins/tree/main/twitter) | Read + write as a Twitter/X account (search, timeline, post, reply, like, retweet, follow) |
+| [`@goose-plugins/reddit`](https://github.com/rorystandley/goose-plugins/tree/main/reddit) | Read-only Reddit — search posts and subreddits, fetch full posts + comments for grounded quoting |
+
+Install with `npm install @goose-plugins/<name>` and restart Goose. Each plugin's own README covers its setup and required environment variables.
+
+---
+
 ## Adding a New Interface
 
 Create `src/interfaces/<name>/` and implement an entry point that:

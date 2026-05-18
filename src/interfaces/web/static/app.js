@@ -328,23 +328,6 @@
   const kanbanPendingApprovals = new Map(); // taskId → { approvalId, toolName, args, riskLevel }
   let dragTaskId    = null;
 
-  // ── Tab switching ─────────────────────────────────────────────────
-  function switchTab(tab) {
-    const isKanban = tab === 'kanban';
-    const isOps    = tab === 'ops';
-    const isChat   = tab === 'chat';
-    document.getElementById('main').style.display         = isChat ? 'flex' : 'none';
-    document.getElementById('memory-panel').style.display = isChat ? 'flex' : 'none';
-    document.getElementById('kanban-view').style.display  = isKanban ? 'flex' : 'none';
-    document.getElementById('ops-view').style.display     = isOps ? 'block' : 'none';
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-    if (isKanban) loadKanban();
-    if (isOps)    loadOps();
-  }
-
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-  });
 
   // ── Fetch tasks from server ───────────────────────────────────────
   async function loadKanban() {
@@ -627,7 +610,6 @@
   }
 
   function viewLive(ctxId) {
-    switchTab('chat');
     if (ctxId) {
       populateContexts().then(() => {
         ctxSelect.value = ctxId;
@@ -819,22 +801,14 @@
     const data = JSON.parse(e.data);
     kanbanTasks = data.tasks || [];
     nextCheckAt = Date.now() + KANBAN_POLL_INTERVAL;
-    if (document.getElementById('kanban-view').style.display !== 'none') {
-      renderKanban();
-    }
+    renderKanban();
   });
 
   // ── SSE: dangerous-tool approval needed for a kanban task ────────
   es.addEventListener('kanbanApproval', e => {
     const data = JSON.parse(e.data);
     kanbanPendingApprovals.set(data.taskId, data);
-    // Badge the Kanban tab so the user notices
-    const kanbanTab = document.querySelector('.tab[data-tab="kanban"]');
-    if (kanbanTab) kanbanTab.dataset.badge = '!';
-    // Re-render the board if it's visible so the approval card appears
-    if (document.getElementById('kanban-view').style.display !== 'none') {
-      renderKanban();
-    }
+    renderKanban();
   });
 
   // ── Send an approval / denial for a kanban-triggered tool ────────
@@ -854,12 +828,6 @@
         kanbanPendingApprovals.delete(taskId);
         break;
       }
-    }
-
-    // Clear the tab badge if nothing else is pending
-    if (kanbanPendingApprovals.size === 0) {
-      const kanbanTab = document.querySelector('.tab[data-tab="kanban"]');
-      if (kanbanTab) delete kanbanTab.dataset.badge;
     }
 
     renderKanban();
@@ -1116,15 +1084,13 @@
     }
   }
 
-  // ── System tile ──────────────────────────────────────────────────
+  // ── System — populates header stats ─────────────────────────────
   function renderSystem() {
     const s = opsState.system;
     if (!s) return;
-    document.getElementById('ops-sys-agent').textContent  = s.agentName || '—';
-    document.getElementById('ops-sys-model').textContent  = s.model || '—';
-    document.getElementById('ops-sys-tts').textContent    = s.ttsBackend + (s.ttsBackend === 'mlx' ? ` (${(s.ttsModel || '').split('/').pop()})` : '');
-    document.getElementById('ops-sys-uptime').textContent = formatUptime(s.uptime);
-    document.getElementById('ops-sys-audio').textContent  = s.audioOutputDirsConfigured ? 'configured' : 'not configured';
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('ops-sys-tts',    s.ttsBackend || '—');
+    set('ops-sys-uptime', formatUptime(s.uptime));
   }
 
   // ── Loaders ──────────────────────────────────────────────────────
@@ -1156,11 +1122,6 @@
     // Tick uptime once a second while the tab is open
     if (opsUptimeTimer) clearInterval(opsUptimeTimer);
     opsUptimeTimer = setInterval(() => {
-      if (document.getElementById('ops-view').style.display === 'none') {
-        clearInterval(opsUptimeTimer);
-        opsUptimeTimer = null;
-        return;
-      }
       if (opsState.system) {
         opsState.system.uptime += 1;
         document.getElementById('ops-sys-uptime').textContent = formatUptime(opsState.system.uptime);
@@ -1171,13 +1132,10 @@
   // ── SSE handlers (broadcast) ─────────────────────────────────────
   es.addEventListener('audioCreated', e => {
     const entry = JSON.parse(e.data);
-    // Avoid duplicate (in case of double-fetch race)
     if (!opsState.audio.find(a => a.id === entry.id)) {
-      // Newly created entries don't yet have the missing/playable flags from GET enrichment;
-      // assume playable so the play button enables.
       opsState.audio.unshift({ ...entry, missing: false, playable: true });
       document.getElementById('ops-audio-count').textContent = opsState.audio.length;
-      if (document.getElementById('ops-view').style.display !== 'none') renderAudio();
+      renderAudio();
     }
   });
 
@@ -1185,7 +1143,7 @@
     const { id } = JSON.parse(e.data);
     opsState.audio = opsState.audio.filter(a => a.id !== id);
     document.getElementById('ops-audio-count').textContent = opsState.audio.length;
-    if (document.getElementById('ops-view').style.display !== 'none') renderAudio();
+    renderAudio();
   });
 
   es.addEventListener('missionStateChanged', e => {
@@ -1196,7 +1154,7 @@
       m.lastRun = update.lastRun ?? m.lastRun;
       m.lastError = update.lastError ?? null;
       m.lastDuration = update.lastDuration ?? m.lastDuration;
-      if (document.getElementById('ops-view').style.display !== 'none') renderMissions();
+      renderMissions();
     }
   });
 
@@ -1205,7 +1163,7 @@
     const m = opsState.monitors.find(x => x.name === update.name);
     if (m) {
       Object.assign(m, update);
-      if (document.getElementById('ops-view').style.display !== 'none') renderMonitors();
+      renderMonitors();
     }
   });
 
@@ -1218,5 +1176,7 @@
 
   // ── Init ─────────────────────────────────────────────────────────
   populateContexts();
+  loadKanban();
+  loadOps();
   setStatus('idle');
   taskInput.focus();
