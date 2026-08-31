@@ -1,0 +1,34 @@
+# Path-based auto-labeling for pull requests.
+# Consumed by .github/workflows/labeler.yml (actions/labeler v5 syntax).
+
+"area: agent":
+  - changed-files:
+      - any-glob-to-any-file: "src/agent/**"
+
+"area: interfaces":
+  - changed-files:
+      - any-glob-to-any-file: "src/interfaces/**"
+
+"area: tools":
+  - changed-files:
+      - any-glob-to-any-file: "src/tools/**"
+
+"area: scheduler":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/scheduler/**"
+          - "src/scheduler-runner.js"
+
+"area: plugins":
+  - changed-files:
+      - any-glob-to-any-file: "src/plugins/**"
+
+"area: kanban":
+  - changed-files:
+      - any-glob-to-any-file: "src/kanban/**"
+
+"documentation":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
