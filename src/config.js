@@ -46,6 +46,7 @@ const config = Object.freeze({
   PLUGINS_DIR: process.env.PLUGINS_DIR || path.join(process.cwd(), 'plugins'),
   MONITORS_PATH: process.env.MONITORS_PATH || path.join(process.cwd(), 'data', 'monitors.json'),
   MONITORS_ALLOW_DANGEROUS: process.env.MONITORS_ALLOW_DANGEROUS === 'true',
+  RUNS_PATH: process.env.RUNS_PATH || path.join(process.cwd(), 'data', 'runs'),
   KANBAN_PATH: process.env.KANBAN_PATH || path.join(process.cwd(), 'data', 'kanban.json'),
   KANBAN_POLL_INTERVAL: parseInt(process.env.KANBAN_POLL_INTERVAL || '60000', 10),
   AUDIO_PATH: process.env.AUDIO_PATH || path.join(process.cwd(), 'data', 'audio.json'),

@@ -56,193 +56,127 @@ Use record_thought when something strikes you while you work — a curious patte
 }
 
 /**
- * Core agentic loop.
- *
- * @param {string} task - The user's request
- * @param {string} contextId - Channel or user ID for memory scoping
- * @param {{ onToolCall: Function, onToolResult: Function, maxIterations?: number, model?: string }} options
- *   - onToolCall({ toolName, args, requiresApproval }) → Promise<boolean>
- *   - onToolResult({ toolName, result }) → void
- *   - maxIterations — override the global MAX_TOOL_ITERATIONS for this run
- *   - model — force a specific model, bypassing the router
- * @returns {Promise<string>} The final assistant response
+ * Text responses remain the default for interactive adapters. Workers request
+ * structured results and persist checkpoints through onCheckpoint.
+ * Checkpoints contain tool calls/results, never just a conversation summary.
  */
 export async function runAgent(task, contextId, options = {}) {
-  const { onToolCall, onToolResult, maxIterations = config.MAX_TOOL_ITERATIONS, subAgentTools, maxToolCallsPerIteration = Infinity, model: modelOverride } = options;
-  const taskStart = Date.now();
-
-  // Select the model for this task (honours FAST_MODEL / SMART_MODEL routing if configured)
-  const model = modelOverride || await selectModel(task);
-
-  log.info('Task started', { task: task.slice(0, 120), contextId, model });
-
-  // Build the message array: system prompt + conversation history + new user message
-  const systemMessage = { role: 'system', content: buildSystemPrompt() };
-  const userMessage = { role: 'user', content: task };
-
-  // Persist the user message to memory
-  addMessage(contextId, userMessage);
-
-  // Working copy of messages for this run (system + history)
-  const history = getHistory(contextId);
-  const messages = [systemMessage, ...history];
-
-  log.debug('Context loaded', { contextId, historyLength: history.length });
-
-  const activeToolMap    = subAgentTools ? subAgentTools.toolMap        : toolMap;
-  const toolDefinitions  = subAgentTools ? subAgentTools.toolDefinitions : getToolDefinitions();
-
-  for (let iteration = 0; iteration < maxIterations; iteration++) {
-    log.debug('LLM call', { iteration, messageCount: messages.length, model });
-
-    const llmStart = Date.now();
-    let llmResult;
-    try {
-      llmResult = await chat({
-        model,
-        messages,
-        tools: toolDefinitions,
-      });
-    } catch (err) {
-      log.error('LLM call failed', { iteration, error: err.message });
-      const errorMsg = `LLM error: ${err.message}`;
-      addMessage(contextId, { role: 'assistant', content: errorMsg });
-      return errorMsg;
-    }
-
-    const llmMs = Date.now() - llmStart;
-    const assistantMessage = llmResult.rawAssistantMessage;
-
-    // Strip thinking tokens from content before they enter the context.
-    // Prevents qwen3 reasoning text from accumulating across iterations
-    // when think: false doesn't fully suppress thinking output at the API level.
-    if (assistantMessage.content) {
-      assistantMessage.content = stripThinking(assistantMessage.content);
-    }
-
-    const hasToolCalls = !!llmResult.toolCalls?.length;
-
-    log.debug('LLM response received', {
-      iteration,
-      durationMs: llmMs,
-      type: hasToolCalls ? 'tool_calls' : 'text',
-      toolCount: llmResult.toolCalls?.length ?? 0,
-    });
-
-    // No tool calls — final answer
-    if (!hasToolCalls) {
-      const content = stripThinking(llmResult.content || '(No response)');
-      addMessage(contextId, { role: 'assistant', content });
-      log.info('Task complete', {
-        contextId,
-        iterations: iteration + 1,
-        durationMs: Date.now() - taskStart,
-        responseChars: content.length,
-      });
-      return content;
-    }
-
-    // When maxToolCallsPerIteration is set, slice the tool call list so the model
-    // processes one call at a time. The assistant message pushed to context is also
-    // trimmed so the model sees a clean 1-call-per-round history and can actually
-    // read tool results (e.g. hook history) before composing dependent steps.
-    const normalizedCalls = llmResult.toolCalls;
-    const callsThisIteration = isFinite(maxToolCallsPerIteration)
-      ? normalizedCalls.slice(0, maxToolCallsPerIteration)
-      : normalizedCalls;
-
-    // Push the raw assistant message into context so the LLM sees its own tool_calls.
-    // For trimmed iterations, we rebuild the raw message with only the executed calls.
-    if (isFinite(maxToolCallsPerIteration) && assistantMessage.tool_calls) {
-      messages.push({ ...assistantMessage, tool_calls: assistantMessage.tool_calls.slice(0, maxToolCallsPerIteration) });
-    } else {
-      messages.push(assistantMessage);
-    }
-
-    // Track whether any tool was denied this iteration so we can break the loop cleanly
-    let anyDenied = false;
-
-    // Process each tool call in sequence
-    for (const toolCall of callsThisIteration) {
-      const toolName = toolCall.name;
-      const args = toolCall.arguments ?? {};
-
-      const tool = activeToolMap[toolName];
-
-      // Unknown tool — report back to the LLM
-      if (!tool) {
-        log.warn('Unknown tool requested', { toolName });
-        const errorResult = `Error: unknown tool "${toolName}"`;
-        messages.push(makeToolResultMessage(toolCall.id, errorResult));
-        onToolResult?.({ toolName, result: errorResult });
-        continue;
-      }
-
-      log.info('Tool call', { tool: toolName, riskLevel: tool.riskLevel, args });
-
-      // Dangerous tools require explicit user approval when REQUIRE_APPROVAL is enabled
-      if (tool.riskLevel === 'dangerous' && config.REQUIRE_APPROVAL) {
-        log.info('Awaiting approval', { tool: toolName });
-        const approved = await onToolCall({ toolName, args, requiresApproval: true });
-        if (!approved) {
-          anyDenied = true;
-          log.info('Tool denied by user', { tool: toolName });
-          // Use a very explicit denial message so the LLM doesn't retry or simulate output
-          const deniedResult = `The user explicitly denied running "${toolName}". Do NOT attempt this action again or simulate its output. Simply acknowledge that the action was cancelled.`;
-          messages.push(makeToolResultMessage(toolCall.id, deniedResult));
-          onToolResult?.({ toolName, result: `"${toolName}" was denied by the user.` });
-          continue;
-        }
-        log.info('Tool approved by user', { tool: toolName });
-      } else {
-        // Safe/moderate — signal without requiring approval (always returns true)
-        await onToolCall({ toolName, args, requiresApproval: false });
-      }
-
-      // Execute the tool — always returns a string, never throws
-      const toolStart = Date.now();
-      let result;
-      try {
-        result = await tool.execute(args, undefined, { onToolResult });
-      } catch (err) {
-        result = `Tool execution error: ${err.message}`;
-        log.error('Tool execution threw', { tool: toolName, error: err.message });
-      }
-
-      const toolMs = Date.now() - toolStart;
-      log.info('Tool result', { tool: toolName, durationMs: toolMs, resultChars: String(result).length });
-      log.debug('Tool result detail', { tool: toolName, result: String(result).slice(0, 300) });
-
-      onToolResult?.({ toolName, result });
-
-      // Append tool result in the correct format for the active backend
-      messages.push(makeToolResultMessage(toolCall.id, String(result)));
-    }
-
-    // If any tool was denied, do one final LLM call WITHOUT tools so it can only
-    // acknowledge the denial — it cannot retry or call tools again.
-    if (anyDenied) {
-      log.info('Denial finalisation call', { contextId });
-      try {
-        const finalResult = await chat({ model, messages });
-        const content = stripThinking(finalResult.content || 'Action cancelled.');
-        addMessage(contextId, { role: 'assistant', content });
-        log.info('Task complete (denied)', { contextId, durationMs: Date.now() - taskStart });
-        return content;
-      } catch (err) {
-        log.error('Denial finalisation LLM call failed', { error: err.message });
-        const msg = 'Action was denied by the user.';
-        addMessage(contextId, { role: 'assistant', content: msg });
-        return msg;
-      }
-    }
-
-    // Loop back — let the LLM process the tool results
+  const {
+    onToolCall = async ({ requiresApproval }) => !requiresApproval,
+    onToolResult, onCheckpoint, structured = false,
+    maxIterations = config.MAX_TOOL_ITERATIONS, subAgentTools,
+    maxToolCallsPerIteration = Infinity, model: modelOverride,
+  } = options;
+  const activeToolMap = subAgentTools?.toolMap ?? toolMap;
+  const toolDefinitions = subAgentTools?.toolDefinitions ?? getToolDefinitions();
+  const state = options.checkpoint ? structuredClone(options.checkpoint) : {
+    model: modelOverride || await selectModel(task),
+    messages: null, iteration: 0, calls: null, nextCall: 0,
+    pendingTool: null, denied: false, toolResults: [], toolErrors: [],
+  };
+  if (!state.messages) {
+    addMessage(contextId, { role: 'user', content: task });
+    state.messages = [{ role: 'system', content: buildSystemPrompt() }, ...getHistory(contextId)];
   }
+  const save = async () => onCheckpoint?.(structuredClone(state));
+  const finish = (status, content, extra = {}) => {
+    addMessage(contextId, { role: 'assistant', content });
+    const outcome = { status, result: content, verified: false, iterations: state.iteration,
+      toolResults: state.toolResults, ...extra };
+    log.info('Task finished', { contextId, status, iterations: state.iteration });
+    return structured ? outcome : content;
+  };
+  // The process may have died after an external action but before recording its
+  // result. Never replay an action whose outcome is unknown, even if approved.
+  if (state.pendingTool) {
+    return finish('blocked', `Interrupted during ${state.pendingTool.name}. Check its outcome before starting a new run.`,
+      { reason: 'uncertain_tool_outcome' });
+  }
+  await save();
 
-  // Exceeded max iterations
+  while (state.iteration < maxIterations || state.calls || state.denied) {
+    if (state.denied && !state.calls) {
+      let content = 'Action was denied by the user.';
+      try {
+        const reply = await chat({ model: state.model, messages: state.messages });
+        content = stripThinking(reply.content || 'Action cancelled.');
+      } catch { /* Denial remains blocked even when finalisation fails. */ }
+      return finish('blocked', content, { reason: 'approval_denied' });
+    }
+    if (!state.calls) {
+      let reply;
+      try {
+        reply = await chat({ model: state.model, messages: state.messages, tools: toolDefinitions });
+      } catch (err) {
+        const retryable = [408, 429].includes(err.status) || err.status >= 500 ||
+          /ECONN|ETIMEDOUT|fetch failed|connection|timeout|timed out|offline|socket/i.test(`${err.code} ${err.message}`);
+        return finish('failed', `LLM error: ${err.message}`, { reason: 'llm_error', retryable });
+      }
+      state.iteration++;
+      if (!reply.toolCalls?.length) {
+        const content = stripThinking(reply.content || '(No response)');
+        // Known tool failures cannot disappear merely because the model emits prose.
+        // A worker's explicit artifact verifier may independently establish success.
+        const failed = state.toolErrors.length > 0 || !reply.content?.trim();
+        return finish(failed ? 'failed' : 'completed', content,
+          failed ? { reason: state.toolErrors.length ? 'tool_error' : 'empty_response' } : {});
+      }
+      const assistant = { ...reply.rawAssistantMessage };
+      if (assistant.content) assistant.content = stripThinking(assistant.content);
+      state.calls = Number.isFinite(maxToolCallsPerIteration)
+        ? reply.toolCalls.slice(0, Math.max(1, maxToolCallsPerIteration)) : reply.toolCalls;
+      if (Number.isFinite(maxToolCallsPerIteration) && assistant.tool_calls) {
+        assistant.tool_calls = assistant.tool_calls.slice(0, Math.max(1, maxToolCallsPerIteration));
+      }
+      state.messages.push(assistant);
+      state.nextCall = 0;
+      await save();
+    }
+
+    while (state.nextCall < state.calls.length) {
+      const call = state.calls[state.nextCall];
+      const toolName = call.name;
+      const args = call.arguments ?? {};
+      const tool = activeToolMap[toolName];
+      let result;
+      let failed = false;
+      if (state.denied) {
+        result = 'Action cancelled after an approval denial. Do not retry.';
+      } else if (!tool) {
+        result = `Error: unknown tool "${toolName}"`;
+        failed = true;
+      } else {
+        const requiresApproval = tool.riskLevel === 'dangerous' && config.REQUIRE_APPROVAL;
+        const approved = await onToolCall({ toolName, args, requiresApproval });
+        if (requiresApproval && !approved) {
+          state.denied = true;
+          result = `The user explicitly denied running "${toolName}". Do NOT attempt this action again or simulate its output. Simply acknowledge that the action was cancelled.`;
+        } else {
+          state.pendingTool = { name: toolName, args };
+          await save(); // Must succeed before executing the action.
+          try {
+            result = await tool.execute(args, undefined, { onToolCall, onToolResult });
+            failed = /^(error\b|failed to\b|tool execution error|access denied|command failed)/i.test(String(result));
+          } catch (err) {
+            result = `Tool execution error: ${err.message}`;
+            failed = true;
+          }
+          state.pendingTool = null;
+        }
+      }
+      state.messages.push(makeToolResultMessage(call.id, String(result)));
+      state.toolResults.push({ toolName, result: String(result), failed });
+      if (failed) state.toolErrors.push({ toolName, result: String(result) });
+      state.nextCall++;
+      // Persist before sending UI events; a disconnected UI must not replay tools.
+      await save();
+      onToolResult?.({ toolName, result: state.denied ? `"${toolName}" was denied by the user.` : result });
+    }
+    state.calls = null;
+    state.nextCall = 0;
+    await save();
+  }
   log.warn('Max iterations reached', { contextId, maxIterations });
-  const tooComplexMsg = `I reached the maximum number of steps (${maxIterations}) for this task. The task may be too complex or require manual intervention. Please try breaking it into smaller steps.`;
-  addMessage(contextId, { role: 'assistant', content: tooComplexMsg });
-  return tooComplexMsg;
+  return finish('budget_exhausted', `I reached the maximum number of steps (${maxIterations}) for this task. The task may be too complex or require manual intervention. Please try breaking it into smaller steps.`,
+    { reason: 'iteration_limit' });
 }

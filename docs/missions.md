@@ -559,3 +559,7 @@ Copy any of these into your `data/missions.json`:
 | `src/config.js` | `MISSIONS_PATH`, `SCHEDULER_ALLOW_DANGEROUS`, `THOUGHTS_PATH` |
 | `src/tools/reflect.js` | `record_thought` tool — appends entries to `data/thoughts.jsonl` |
 | `data/thoughts.jsonl` | Thought journal — append-only JSONL (not committed) |
+
+## Verified execution and recovery
+
+Missions now persist progress, stop on structured failures, and support file acceptance checks. Incomplete runs pause their cron schedule until explicitly restarted. See [execution and recovery](execution.md) for configuration and migration details.

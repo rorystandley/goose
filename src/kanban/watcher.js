@@ -1,6 +1,6 @@
-import { runAgent } from '../agent/loop.js';
+import { executeKanbanTask, isTaskActive } from './execute.js';
 import { createLogger } from '../logger.js';
-import { getReadyTasks, getInProgressTasks, updateTask } from './store.js';
+import { getReadyTasks, getInProgressTasks } from './store.js';
 
 const log = createLogger('kanban:watcher');
 
@@ -17,46 +17,26 @@ const log = createLogger('kanban:watcher');
  * @returns {{ pause, resume, triggerNow, getNextCheckAt, stop }}
  */
 export function startKanbanWatcher({ makeAgentCallbacks, onUpdate, interval = 60_000 }) {
+  let stopped = false;
   let paused  = false;
   let running = false;  // in-memory lock prevents concurrent watcher runs
   let nextCheckAt = Date.now() + interval;
   let timer = null;
 
   async function checkForWork() {
-    if (paused || running) return;
+    if (stopped || paused || running) return;
 
-    if (getInProgressTasks().length > 0) {
-      log.debug('Task already in progress — skipping poll');
-      return;
-    }
-
-    const ready = getReadyTasks();
-    if (ready.length === 0) return;
-
-    const task = ready[0];
-    const contextId = `kanban-${task.id}`;
-
+    // Recover orphaned in-progress work before picking up another queued task.
+    const inProgress = getInProgressTasks();
+    const task = inProgress.length ? inProgress.find(t => !isTaskActive(t.id)) : getReadyTasks()[0];
+    if (!task) return;
     running = true;
-    log.info('Picking up kanban task', { id: task.id, title: task.title, priority: task.priority, allowDangerous: task.allowDangerous ?? false });
-
-    updateTask(task.id, { status: 'in-progress', startedAt: new Date().toISOString(), contextId });
-    onUpdate();
-
-    try {
-      const result = await runAgent(task.description, contextId, makeAgentCallbacks(contextId, task));
-      updateTask(task.id, { status: 'done', completedAt: new Date().toISOString(), result });
-      log.info('Kanban task completed', { id: task.id });
-    } catch (err) {
-      log.error('Kanban task failed — requeueing', { id: task.id, error: err.message });
-      updateTask(task.id, { status: 'ready', startedAt: null, contextId: null });
-    } finally {
-      running = false;
-    }
-
-    onUpdate();
+    try { await executeKanbanTask(task.id, makeAgentCallbacks, onUpdate); }
+    finally { running = false; }
   }
 
   function schedule() {
+    if (stopped) return;
     nextCheckAt = Date.now() + interval;
     timer = setTimeout(async () => {
       await checkForWork().catch(err => log.error('Watcher error', { error: err.message }));
@@ -73,6 +53,6 @@ export function startKanbanWatcher({ makeAgentCallbacks, onUpdate, interval = 60
     resume()       { paused = false; checkForWork().catch(() => {}); log.info('Kanban watcher resumed'); },
     triggerNow()   { return checkForWork(); },
     getNextCheckAt() { return nextCheckAt; },
-    stop()         { if (timer) { clearTimeout(timer); timer = null; } },
+    stop()         { stopped = true; if (timer) { clearTimeout(timer); timer = null; } },
   };
 }

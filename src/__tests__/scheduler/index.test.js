@@ -28,7 +28,24 @@ vi.mock('node-cron', () => ({
 }));
 
 const mockRunAgent = vi.hoisted(() => vi.fn());
-vi.mock('../../agent/loop.js', () => ({ runAgent: mockRunAgent }));
+vi.mock('../../agent/loop.js', () => ({
+  runAgent: async (...args) => {
+    const value = await mockRunAgent(...args);
+    return typeof value === 'string' ? { status: 'completed', result: value, verified: false } : value;
+  },
+}));
+const runStore = vi.hoisted(() => new Map());
+vi.mock('../../execution/store.js', () => ({
+  fingerprint: value => JSON.stringify(value),
+  readRun: id => runStore.get(id) ?? null,
+  writeRun: (id, state) => runStore.set(id, structuredClone(state)),
+  acquireRun: () => () => {},
+}));
+vi.mock('../../execution/verify.js', () => ({
+  validateCriteria: () => {},
+  snapshotArtifacts: async () => ({}),
+  verifyArtifacts: async () => ({ verified: true, evidence: [] }),
+}));
 
 const mockSpeak = vi.hoisted(() => vi.fn());
 vi.mock('../../interfaces/voice/tts.js', () => ({ speak: mockSpeak }));
@@ -69,6 +86,7 @@ function missionsJson(missions) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  runStore.clear();
   // Default: valid cron, no existing file
   mockValidate.mockReturnValue(true);
   mockReadFileSync.mockImplementation(() => { throw new Error('ENOENT'); });
@@ -664,5 +682,33 @@ describe('executeMission', () => {
     const notify = vi.fn().mockResolvedValue(undefined);
     await executeMission(sampleMission, { source: 'manual', notify });
     expect(notify).toHaveBeenCalledWith('C123', 'morning-briefing', 'notify me');
+  });
+});
+
+describe('structured mission outcomes', () => {
+  it.each(['failed', 'blocked', 'budget_exhausted'])('does not publish or mark %s completed', async status => {
+    mockRunAgent.mockResolvedValue({ status, result: 'unfinished', verified: false });
+    const notify = vi.fn();
+    const result = await executeMission(sampleMission, { notify });
+    expect(result.outcome.status).toBe(status);
+    expect(result.error).toBeTruthy();
+    expect(notify).not.toHaveBeenCalled();
+    expect(getMissionState(sampleMission.name).status).toBe(status);
+  });
+  it('does not advance to a publishing phase after failure', async () => {
+    mockRunAgent.mockResolvedValueOnce({ status: 'failed', result: 'offline' });
+    await executeMission({ ...sampleMission, phases: [{ name: 'gather', task: 'research' }, { name: 'publish', task: 'post' }] });
+    expect(mockRunAgent).toHaveBeenCalledTimes(1);
+  });
+  it('does not automatically repeat an incomplete occurrence on the next cron tick', async () => {
+    mockRunAgent.mockResolvedValue({ status: 'budget_exhausted', result: 'unfinished' });
+    mockReadFileSync.mockReturnValue(missionsJson([sampleMission]));
+    await startScheduler();
+    const fire = mockSchedule.mock.calls[0][1];
+    await fire(); await fire();
+    expect(mockRunAgent).toHaveBeenCalledTimes(1);
+    mockRunAgent.mockResolvedValue('done');
+    const result = await executeMission(sampleMission, { startNew: true });
+    expect(result.outcome.status).toBe('completed');
   });
 });

@@ -1,6 +1,7 @@
 import fs from 'fs';
-import path from 'path';
 import config from '../config.js';
+import { writeJsonFile } from '../execution/store.js';
+import { validateCriteria } from '../execution/verify.js';
 
 const KANBAN_PATH = config.KANBAN_PATH;
 
@@ -9,14 +10,14 @@ const PRIORITY_RANK = { urgent: 4, high: 3, medium: 2, low: 1 };
 function readStore() {
   try {
     return JSON.parse(fs.readFileSync(KANBAN_PATH, 'utf8'));
-  } catch {
-    return { tasks: [] };
+  } catch (err) {
+    if (err.code === 'ENOENT') return { tasks: [] };
+    throw err;
   }
 }
 
 function writeStore(store) {
-  fs.mkdirSync(path.dirname(KANBAN_PATH), { recursive: true });
-  fs.writeFileSync(KANBAN_PATH, JSON.stringify(store, null, 2), 'utf8');
+  writeJsonFile(KANBAN_PATH, store);
 }
 
 export function getTasks() {
@@ -27,7 +28,8 @@ export function getTask(id) {
   return readStore().tasks.find(t => t.id === id) ?? null;
 }
 
-export function createTask({ title, description = '', priority = 'medium', tags = [], allowDangerous = false }) {
+export function createTask({ title, description = '', priority = 'medium', tags = [], allowDangerous = false, acceptance = [] }) {
+  validateCriteria(acceptance);
   const store = readStore();
   const task = {
     id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -37,6 +39,9 @@ export function createTask({ title, description = '', priority = 'medium', tags 
     status: 'backlog',
     tags,
     allowDangerous,
+    acceptance,
+    runId: null,
+    outcome: null,
     createdAt:   new Date().toISOString(),
     updatedAt:   new Date().toISOString(),
     startedAt:   null,
@@ -50,6 +55,7 @@ export function createTask({ title, description = '', priority = 'medium', tags 
 }
 
 export function updateTask(id, patch) {
+  if (patch.acceptance !== undefined) validateCriteria(patch.acceptance);
   const store = readStore();
   const idx = store.tasks.findIndex(t => t.id === id);
   if (idx === -1) return null;

@@ -1,6 +1,6 @@
 import { createApproval } from '../../agent/approvals.js';
 import { toolMap } from '../../tools/index.js';
-import { write as sseWrite } from './sse.js';
+import { write as sseWrite, broadcast } from './sse.js';
 
 /**
  * Factory that creates runAgent callbacks wired to SSE for a given contextId.
@@ -25,6 +25,37 @@ export function makeCallbacks(contextId) {
     onToolResult: ({ toolName, result }) => {
       const preview = String(result).slice(0, 500);
       sseWrite(contextId, 'toolResult', { toolName, result: preview });
+    },
+  };
+}
+
+export function makeKanbanCallbacks(contextId, task) {
+  if (task.allowDangerous) {
+    // Auto-approve — no user interaction required
+    return {
+      onToolCall: async () => true,
+      onToolResult: ({ toolName, result }) => {
+        sseWrite(contextId, 'toolResult', { toolName, result: String(result).slice(0, 500) });
+      },
+    };
+  }
+
+  // Default: gate dangerous tools via a broadcast approval request
+  return {
+    onToolCall: async ({ toolName, args, requiresApproval }) => {
+      const riskLevel = toolMap[toolName]?.riskLevel ?? 'safe';
+      if (!requiresApproval) {
+        // Safe/moderate — stream to the kanban task's contextId (for View Live)
+        sseWrite(contextId, 'toolCall', { toolName, args, requiresApproval: false, riskLevel });
+        return true;
+      }
+      // Dangerous — broadcast to every connected browser so the user can see it
+      const { id: approvalId, promise } = createApproval({ tool: toolName, args });
+      broadcast('kanbanApproval', { taskId: task.id, toolName, args, approvalId, riskLevel });
+      return promise;
+    },
+    onToolResult: ({ toolName, result }) => {
+      sseWrite(contextId, 'toolResult', { toolName, result: String(result).slice(0, 500) });
     },
   };
 }

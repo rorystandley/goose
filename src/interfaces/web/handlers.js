@@ -1,3 +1,5 @@
+import { executeKanbanTask } from '../../kanban/execute.js';
+import { validateCriteria } from '../../execution/verify.js';
 import { runAgent } from '../../agent/loop.js';
 import { getHistory, clearHistory, getContextIds } from '../../agent/memory.js';
 import { resolveApproval } from '../../agent/approvals.js';
@@ -8,7 +10,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import config from '../../config.js';
 import { addClient, removeClient, write as sseWrite, broadcast } from './sse.js';
-import { makeCallbacks } from './callbacks.js';
+import { makeCallbacks, makeKanbanCallbacks } from './callbacks.js';
 import { getHtml } from './public.js';
 import { getTasks, getTask, createTask, updateTask, deleteTask } from '../../kanban/store.js';
 import { getAudio, getAudioById, deleteAudio } from '../../audio/store.js';
@@ -255,6 +257,8 @@ export async function handleRequest(req, res) {
   if (method === 'POST' && path === '/api/kanban') {
     const body = await readBody(req);
     if (!body?.title) { json(res, 400, { error: 'title required' }); return; }
+    try { validateCriteria(body.acceptance); }
+    catch (err) { json(res, 400, { error: err.message }); return; }
     const task = createTask(body);
     broadcast('kanbanUpdate', { tasks: getTasks() });
     json(res, 201, { task });
@@ -265,7 +269,18 @@ export async function handleRequest(req, res) {
   if (method === 'PUT' && kanbanId && !kanbanAction) {
     const body = await readBody(req);
     if (!body) { json(res, 400, { error: 'body required' }); return; }
-    const task = updateTask(kanbanId, body);
+    const existing = getTask(kanbanId);
+    if (existing?.status === 'in-progress') { json(res, 409, { error: 'Cannot edit a running task' }); return; }
+    try { validateCriteria(body.acceptance); }
+    catch (err) { json(res, 400, { error: err.message }); return; }
+    const patch = Object.fromEntries(Object.entries(body).filter(([key]) =>
+      ['title', 'description', 'priority', 'tags', 'allowDangerous', 'acceptance', 'status'].includes(key)));
+    if (patch.status && !['backlog', 'ready'].includes(patch.status)) {
+      json(res, 400, { error: 'Tasks can only be moved to backlog or ready manually' }); return;
+    }
+    // Reopening is an explicit new run. Preserve old checkpoints for inspection.
+    if (patch.status === 'backlog') Object.assign(patch, { runId: null, outcome: null, result: null, startedAt: null, completedAt: null, contextId: null });
+    const task = updateTask(kanbanId, patch);
     if (!task) { json(res, 404, { error: 'task not found' }); return; }
     broadcast('kanbanUpdate', { tasks: getTasks() });
     json(res, 200, { task });
@@ -274,6 +289,7 @@ export async function handleRequest(req, res) {
 
   // DELETE /api/kanban/:id — delete task
   if (method === 'DELETE' && kanbanId && !kanbanAction) {
+    if (getTask(kanbanId)?.status === 'in-progress') { json(res, 409, { error: 'Cannot delete a running task' }); return; }
     const ok = deleteTask(kanbanId);
     if (!ok) { json(res, 404, { error: 'task not found' }); return; }
     broadcast('kanbanUpdate', { tasks: getTasks() });
@@ -288,19 +304,8 @@ export async function handleRequest(req, res) {
     if (task.status !== 'ready') { json(res, 409, { error: 'task must be in ready status' }); return; }
 
     const contextId = `kanban-${task.id}`;
-    updateTask(task.id, { status: 'in-progress', startedAt: new Date().toISOString(), contextId });
-    broadcast('kanbanUpdate', { tasks: getTasks() });
-
-    runAgent(task.description, contextId, makeCallbacks(contextId))
-      .then(result => {
-        updateTask(task.id, { status: 'done', completedAt: new Date().toISOString(), result });
-        broadcast('kanbanUpdate', { tasks: getTasks() });
-      })
-      .catch(err => {
-        log.error('Triggered kanban task failed', { id: task.id, error: err.message });
-        updateTask(task.id, { status: 'ready', startedAt: null, contextId: null });
-        broadcast('kanbanUpdate', { tasks: getTasks() });
-      });
+    void executeKanbanTask(task.id, makeKanbanCallbacks,
+      () => broadcast('kanbanUpdate', { tasks: getTasks() }));
 
     json(res, 202, { contextId });
     return;
@@ -381,7 +386,7 @@ export async function handleRequest(req, res) {
   // GET /api/missions — list with state + nextRun
   if (method === 'GET' && path === '/api/missions') {
     const missions = loadMissions();
-    const states = new Map(getAllMissionStates().map(s => [s.name, s]));
+    const states = new Map(getAllMissionStates(missions.map(m => m.name)).map(s => [s.name, s]));
     const enriched = missions.map(m => {
       let nextRun = null;
       try {
@@ -410,6 +415,7 @@ export async function handleRequest(req, res) {
         lastRun: state.lastRun ?? null,
         lastError: state.lastError ?? null,
         lastDuration: state.lastDuration ?? null,
+        verified: state.outcome?.verified ?? false,
       };
     });
     json(res, 200, { missions: enriched });
@@ -423,9 +429,10 @@ export async function handleRequest(req, res) {
     const mission = missions.find(m => m.name === name);
     if (!mission) { json(res, 404, { error: 'mission not found' }); return; }
 
+    const body = await readBody(req);
     log.info('Manual mission trigger', { name });
     // Fire-and-forget — state updates flow via SSE
-    executeMission(mission, { source: 'manual' }).catch(err => {
+    executeMission(mission, { source: 'manual', ...(body?.startNew === true ? { startNew: true } : {}) }).catch(err => {
       log.error('Manual mission trigger crashed', { name, error: err.message });
     });
     json(res, 202, { name, status: 'triggered' });

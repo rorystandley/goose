@@ -81,14 +81,16 @@ export const delegate_task = {
   },
   riskLevel: 'moderate',
 
-  async execute(args) {
+  async execute(args, _unused, callbacks = {}) {
     const { runAgent } = await import('../agent/loop.js');
 
     const subAgentTools = await getSubAgentTools(args.allowed_tools);
     const contextId     = args.context_id ?? `sub-agent-${Date.now()}`;
     const maxIterations = Math.min(args.max_iterations ?? 5, 5);
 
-    return runAgent(args.task, contextId, { subAgentTools, maxIterations });
+    const result = await runAgent(args.task, contextId, { ...callbacks, subAgentTools, maxIterations, structured: true });
+    return typeof result === 'string' ? result : result.status === 'completed'
+      ? result.result : `Error: delegated task ${result.status}: ${result.result}`;
   },
 };
 
@@ -138,7 +140,7 @@ export const parallel_delegate = {
   },
   riskLevel: 'moderate',
 
-  async execute(args) {
+  async execute(args, _unused, callbacks = {}) {
     if (!args.agents?.length) {
       return 'Error: parallel_delegate requires at least one agent spec in the agents array.';
     }
@@ -153,11 +155,13 @@ export const parallel_delegate = {
         const contextId     = spec.context_id ?? `sub-agent-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const maxIterations = Math.min(spec.max_iterations ?? 5, 5);
 
-        const result = await runAgent(spec.task, contextId, { subAgentTools, maxIterations });
-        return { task: spec.task, result };
+        const outcome = await runAgent(spec.task, contextId, { ...callbacks, subAgentTools, maxIterations, structured: true });
+        const result = typeof outcome === 'string' ? outcome : outcome.result;
+        return { task: spec.task, result, ...(typeof outcome === 'object' ? { status: outcome.status } : {}) };
       }),
     );
 
-    return JSON.stringify(results, null, 2);
+    const failed = results.some(r => r.status && r.status !== 'completed');
+    return `${failed ? 'Error: one or more delegated tasks did not complete.\n' : ''}${JSON.stringify(results, null, 2)}`;
   },
 };

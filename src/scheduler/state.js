@@ -1,9 +1,18 @@
+import { readRun } from '../execution/store.js';
 import { broadcast } from '../interfaces/web/sse.js';
 
 const state = new Map();
 
 function snapshot(name) {
-  const entry = state.get(name);
+  let entry = state.get(name);
+  try {
+    const run = readRun(`mission:${name}`);
+    if (run && (!entry || run.startedAt > (entry.startedAt ?? '') || run.finishedAt > (entry.lastRun ?? ''))) {
+      entry = { status: run.status, startedAt: run.startedAt, lastRun: run.finishedAt ?? null,
+        lastError: run.status === 'completed' ? null : run.outcome?.result ?? null,
+        outcome: run.outcome, lastDuration: run.finishedAt ? new Date(run.finishedAt) - new Date(run.startedAt) : null };
+    }
+  } catch { /* The executor reports unreadable checkpoints on its next attempt. */ }
   if (!entry) return { name, status: 'idle', lastRun: null, lastError: null, lastDuration: null };
   return { name, ...entry };
 }
@@ -18,11 +27,12 @@ export function recordMissionStart(name) {
   broadcast('missionStateChanged', snapshot(name));
 }
 
-export function recordMissionComplete(name, { durationMs } = {}) {
+export function recordMissionComplete(name, { durationMs, outcome } = {}) {
   const previous = state.get(name) ?? {};
   state.set(name, {
     ...previous,
     status: 'completed',
+    outcome,
     lastRun: new Date().toISOString(),
     lastDuration: durationMs ?? null,
     lastError: null,
@@ -30,11 +40,12 @@ export function recordMissionComplete(name, { durationMs } = {}) {
   broadcast('missionStateChanged', snapshot(name));
 }
 
-export function recordMissionFailed(name, { error, durationMs } = {}) {
+export function recordMissionFailed(name, { error, durationMs, outcome } = {}) {
   const previous = state.get(name) ?? {};
   state.set(name, {
     ...previous,
-    status: 'failed',
+    status: outcome?.status ?? 'failed',
+    outcome,
     lastRun: new Date().toISOString(),
     lastDuration: durationMs ?? null,
     lastError: error ?? 'Unknown error',
@@ -46,8 +57,8 @@ export function getMissionState(name) {
   return snapshot(name);
 }
 
-export function getAllMissionStates() {
-  const names = new Set(state.keys());
+export function getAllMissionStates(missionNames = []) {
+  const names = new Set([...state.keys(), ...missionNames]);
   return [...names].map(snapshot);
 }
 

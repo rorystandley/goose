@@ -341,7 +341,7 @@
 
   // ── Render the full board ─────────────────────────────────────────
   function renderKanban() {
-    for (const status of ['backlog', 'ready', 'in-progress', 'done']) {
+    for (const status of ['backlog', 'ready', 'in-progress', 'blocked', 'done']) {
       const cardsEl = document.getElementById('cards-' + status);
       const countEl = document.getElementById('count-' + status);
       if (!cardsEl || !countEl) continue;
@@ -407,6 +407,13 @@
       metaEl.appendChild(timeEl);
     }
 
+    if (task.outcome) {
+      const badge = document.createElement('span');
+      badge.className = 'kb-tag';
+      badge.textContent = task.outcome.verified ? 'Verified' : isDone ? 'No output checks' : task.outcome.status.replaceAll('_', ' ');
+      metaEl.appendChild(badge);
+    }
+
     // Action buttons
     const actionsEl = document.createElement('div');
     actionsEl.className = 'kb-card-actions';
@@ -433,7 +440,7 @@
       addBtn('✕',        'delete', 'danger');
     } else if (isInProgress) {
       addBtn('👁 View Live', 'view-live');
-    } else if (isDone) {
+    } else if (isDone || task.status === 'blocked') {
       addBtn('↩ Reopen',  'reopen');
       addBtn('✕',        'delete', 'danger');
     }
@@ -449,7 +456,7 @@
       bodyEl.appendChild(descEl);
     }
 
-    if (isDone && task.result) {
+    if ((isDone || task.status === 'blocked') && task.result) {
       const lbl = document.createElement('div');
       lbl.className = 'kb-result-label';
       lbl.textContent = 'Result';
@@ -460,6 +467,13 @@
       bodyEl.appendChild(res);
     }
 
+    if (task.outcome?.evidence?.length) {
+      const evidence = document.createElement('div');
+      evidence.className = 'kb-card-desc';
+      evidence.textContent = task.outcome.evidence.map(e =>
+        (e.passed ? '✓ ' : '✕ ') + e.path + (e.error ? ': ' + e.error : '')).join('\n');
+      bodyEl.appendChild(evidence);
+    }
     card.appendChild(titleEl);
     card.appendChild(metaEl);
 
@@ -539,6 +553,7 @@
     'ready':       ['backlog'],
     'in-progress': [],
     'done':        ['backlog'],
+    'blocked':     ['backlog'],
   };
 
   document.querySelectorAll('.kb-cards').forEach(cardsEl => {
@@ -642,6 +657,11 @@
     descTextarea.value = task.description || '';
     descTextarea.placeholder = 'Description…';
 
+    const outputFiles = document.createElement('textarea');
+    outputFiles.className = 'kb-form-textarea';
+    outputFiles.placeholder = 'Required output files, one path per line (optional)';
+    outputFiles.value = (task.acceptance || []).map(c => c.path).join('\n');
+
     const prioritySelect = document.createElement('select');
     prioritySelect.className = 'kb-form-select';
     ['low', 'medium', 'high', 'urgent'].forEach(p => {
@@ -685,6 +705,7 @@
 
     form.appendChild(titleInput);
     form.appendChild(descTextarea);
+    form.appendChild(outputFiles);
     form.appendChild(formRow);
     form.appendChild(allowDangerousLabel);
     form.appendChild(actionsRow);
@@ -706,6 +727,8 @@
             priority:       prioritySelect.value,
             tags,
             allowDangerous: allowDangerousCheck.checked,
+            acceptance: outputFiles.value.split('\n').map(p => p.trim()).filter(Boolean).map(path =>
+              (task.acceptance || []).find(c => c.path === path) || { type: 'file', path }),
           }),
         });
       } catch { renderKanban(); }
@@ -743,6 +766,7 @@
           priority:       document.getElementById('kb-priority').value,
           tags,
           allowDangerous: document.getElementById('kb-allow-dangerous').checked,
+          acceptance: document.getElementById('kb-output-files').value.split('\n').map(p => p.trim()).filter(Boolean).map(path => ({ type: 'file', path })),
         }),
       });
       addForm.classList.remove('open');
@@ -753,6 +777,7 @@
   function clearAddForm() {
     document.getElementById('kb-title').value           = '';
     document.getElementById('kb-desc').value            = '';
+    document.getElementById('kb-output-files').value    = '';
     document.getElementById('kb-priority').value        = 'medium';
     document.getElementById('kb-tags').value            = '';
     document.getElementById('kb-allow-dangerous').checked = false;
@@ -890,7 +915,7 @@
 
   function ledClass(status) {
     if (status === 'running' || status === 'cooldown') return 'led on orange pulse';
-    if (status === 'failed' || status === 'triggered') return 'led on red';
+    if (['failed', 'blocked', 'budget_exhausted', 'triggered'].includes(status)) return 'led on red';
     if (status === 'completed' || status === 'ok')     return 'led on green';
     return 'led off';
   }
@@ -987,10 +1012,11 @@
           <span class="ops-mission-name">${escHtml(m.name)}</span>
           ${errBadge}
           ${m.hasPhases ? '<span class="ops-mission-tag">PHASED</span>' : ''}
+          ${m.verified ? '<span class="ops-mission-tag">VERIFIED</span>' : ''}
           ${m.isDirect ? '<span class="ops-mission-tag">DIRECT</span>' : ''}
           ${!m.enabled ? '<span class="ops-mission-tag dim">DISABLED</span>' : ''}
           <span class="spacer"></span>
-          <button class="ops-btn ops-btn-trigger" data-name="${escAttr(m.name)}" ${triggerDisabled ? 'disabled' : ''}>▶ Trigger</button>
+          <button class="ops-btn ops-btn-trigger" data-name="${escAttr(m.name)}" ${triggerDisabled ? 'disabled' : ''}>${['failed', 'blocked', 'budget_exhausted'].includes(m.status) ? 'Start new run' : '▶ Trigger'}</button>
         </div>
         <div class="ops-mission-meta">
           <span class="ops-meta-k">SCHEDULE</span><span class="ops-meta-v">${cron} <span class="dim">${escHtml(m.timezone || 'UTC')}</span></span>
@@ -1008,7 +1034,12 @@
 
   async function triggerMission(name) {
     try {
-      await fetch(`/api/missions/${encodeURIComponent(name)}/trigger`, { method: 'POST' });
+      const mission = opsState.missions.find(x => x.name === name);
+      const startNew = ['failed', 'blocked', 'budget_exhausted'].includes(mission?.status);
+      if (startNew && !window.confirm('Start this mission again from the beginning? Check previous actions first, as they may be repeated.')) return;
+      await fetch(`/api/missions/${encodeURIComponent(name)}/trigger`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startNew }),
+      });
       // Optimistic — state will be updated by SSE
       const m = opsState.missions.find(x => x.name === name);
       if (m) { m.status = 'running'; renderMissions(); }

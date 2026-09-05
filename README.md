@@ -57,6 +57,8 @@ The agent core (`src/agent/`, `src/tools/`) has zero dependencies on any interfa
 
 ## Documentation
 
+Kanban tasks and scheduled missions support persistent checkpoints, bounded inference retries, and optional artifact verification. Failed work is kept out of Done. See [verified execution and recovery](docs/execution.md).
+
 | Guide | Description |
 |---|---|
 | [docs/ollama.md](docs/ollama.md) | Ollama setup — installation, model selection, multi-model routing |

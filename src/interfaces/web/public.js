@@ -106,6 +106,8 @@ export function getHtml(agentName, model, kanbanPollInterval = 60000) {
         <div class="kb-add-form" id="kb-add-form">
           <input  class="kb-form-input"    id="kb-title"    placeholder="Task title…">
           <textarea class="kb-form-textarea" id="kb-desc"   placeholder="Describe what Goose should do…"></textarea>
+          <label class="kb-form-check" for="kb-output-files">Required output files (optional)</label>
+          <textarea class="kb-form-textarea" id="kb-output-files" placeholder="One file path per line"></textarea>
           <div class="kb-form-row">
             <select class="kb-form-select" id="kb-priority">
               <option value="low">Low</option>
@@ -132,6 +134,10 @@ export function getHtml(agentName, model, kanbanPollInterval = 60000) {
       <div class="kb-col" data-status="in-progress">
         <div class="kb-col-header">In Progress <span class="kb-count" id="count-in-progress">0</span></div>
         <div class="kb-cards" id="cards-in-progress"></div>
+      </div>
+      <div class="kb-col" data-status="blocked">
+        <div class="kb-col-header">Needs attention <span class="kb-count" id="count-blocked">0</span></div>
+        <div class="kb-cards" id="cards-blocked"></div>
       </div>
       <div class="kb-col" data-status="done">
         <div class="kb-col-header">Done <span class="kb-count" id="count-done">0</span></div>

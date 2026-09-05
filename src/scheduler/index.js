@@ -1,7 +1,8 @@
 import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
-import { runAgent } from '../agent/loop.js';
+import { executeWorkflow } from '../execution/workflow.js';
+import { readRun } from '../execution/store.js';
 import { toolMap, initTools } from '../tools/index.js';
 import { createLogger } from '../logger.js';
 import config from '../config.js';
@@ -288,7 +289,7 @@ export function makeSchedulerCallbacks(missionName, allowDangerous = false, capt
  * @param {string}   options.source   'cron' | 'manual' — informational only
  * @returns {{ contextId: string, result: string|null, error: Error|null }}
  */
-export async function executeMission(mission, { notify = null, source = 'cron' } = {}) {
+export async function executeMission(mission, { notify = null, source = 'cron', startNew = false } = {}) {
   const baseContextId = mission.contextId || `mission-${mission.name}`;
   const contextId = mission.freshContext
     ? `${baseContextId}-${Date.now()}`
@@ -301,56 +302,67 @@ export async function executeMission(mission, { notify = null, source = 'cron' }
 
   let result = null;
   try {
-    if (mission.direct) {
-      log.info('Direct tool execution', { name: mission.name, tool: mission.direct });
-      result = await executeDirect(mission.direct, mission.directArgs ?? {});
-      log.info('Direct tool complete', { name: mission.name, resultChars: result?.length });
-    } else if (mission.phases) {
-      let previousResult = null;
-      for (const phase of mission.phases) {
-        let phaseTask = phase.task;
-        if (phase.injectPreviousResult && previousResult) {
-          phaseTask = `${phaseTask}\n\nContext from previous phase:\n${previousResult}`;
+    const stages = mission.direct ? [{
+      name: mission.direct,
+      direct: async () => {
+        const tool = toolMap[mission.direct];
+        if (tool?.riskLevel === 'dangerous' && config.REQUIRE_APPROVAL &&
+          !(mission.allowDangerous || config.SCHEDULER_ALLOW_DANGEROUS)) {
+          throw new Error('Direct tool requires allowDangerous approval');
         }
-        const phaseModel = phase.model || mission.model;
-        const useCapture = !!phase.captureToolResults;
-        const callbacks = makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false, useCapture);
-        const agentResult = await runAgent(phaseTask, contextId, {
-          ...callbacks,
-          ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
-          ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
-          ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
-          ...(phaseModel ? { model: phaseModel } : {}),
-        });
-        previousResult = useCapture ? (callbacks.getCapturedResults() || agentResult) : agentResult;
-        log.info('Phase complete', { mission: mission.name, phase: phase.name, responseChars: previousResult?.length });
-      }
-      result = previousResult;
-    } else {
-      result = await runAgent(
-        buildTask(mission),
-        contextId,
-        {
-          ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
-          ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
-          ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
-          ...(mission.model ? { model: mission.model } : {}),
-        },
-      );
-    }
-    log.info('Mission complete', { name: mission.name, responseChars: result?.length });
-
+        return executeDirect(mission.direct, mission.directArgs ?? {});
+      },
+    }] : mission.phases ? mission.phases.map(phase => ({
+      name: phase.name,
+      contextId,
+      task: previous => phase.injectPreviousResult && previous
+        ? `${phase.task}\n\nContext from previous phase:\n${previous}` : phase.task,
+      acceptance: phase.acceptance,
+      captureToolResults: !!phase.captureToolResults,
+      options: {
+        ...makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false),
+        ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
+        ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
+        ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
+        ...(phase.model || mission.model ? { model: phase.model || mission.model } : {}),
+      },
+    })) : [{
+      name: 'execute', task: buildTask(mission), contextId,
+      options: {
+        ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
+        ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
+        ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
+        ...(mission.model ? { model: mission.model } : {}),
+      },
+    }];
+    // Persist the save as a workflow stage so output-write failures cannot be
+    // reported as success and previous agent stages need not be repeated.
     if (mission.saveResponseTo) {
-      try {
-        const savePath = path.join(process.cwd(), mission.saveResponseTo);
-        fs.mkdirSync(path.dirname(savePath), { recursive: true });
-        fs.writeFileSync(savePath, result, 'utf8');
-        log.info('Response saved', { name: mission.name, path: mission.saveResponseTo });
-      } catch (err) {
-        log.error('Failed to save response', { name: mission.name, error: err.message });
-      }
+      let response;
+      stages.push({
+        name: 'save-response',
+        task: previous => { response = previous; return ''; },
+        direct: async () => {
+          const savePath = path.join(process.cwd(), mission.saveResponseTo);
+          fs.mkdirSync(path.dirname(savePath), { recursive: true });
+          fs.writeFileSync(savePath, response, 'utf8');
+          return response;
+        },
+        acceptance: [{ type: 'file', path: mission.saveResponseTo, allowUnchanged: true }],
+      });
     }
-
+    const outcome = await executeWorkflow({
+      id: `mission:${mission.name}`, definition: mission, stages,
+      acceptance: mission.acceptance ?? [], restartCompleted: true, startNew,
+      maxAttempts: mission.maxAttempts,
+    });
+    if (outcome.reason === 'run_locked') return { contextId, result: null, error: null, outcome };
+    result = outcome.result;
+    if (outcome.status !== 'completed') {
+      const err = new Error(result);
+      err.outcome = outcome;
+      throw err;
+    }
     const output = buildMissionOutput(mission, result, startTime);
 
     if (notify && mission.slackChannel) {
@@ -365,8 +377,8 @@ export async function executeMission(mission, { notify = null, source = 'cron' }
       });
     }
 
-    recordMissionComplete(mission.name, { durationMs: Date.now() - startedAt });
-    return { contextId, result, error: null };
+    recordMissionComplete(mission.name, { durationMs: Date.now() - startedAt, outcome });
+    return { contextId, result, error: null, outcome };
   } catch (err) {
     log.error('Mission failed', { name: mission.name, error: err.message });
     if (mission.speakOnFailure) {
@@ -375,8 +387,8 @@ export async function executeMission(mission, { notify = null, source = 'cron' }
         { source: 'mission', missionName: mission.name, contextId, mode: 'failure' },
       );
     }
-    recordMissionFailed(mission.name, { error: err.message, durationMs: Date.now() - startedAt });
-    return { contextId, result: null, error: err };
+    recordMissionFailed(mission.name, { error: err.message, durationMs: Date.now() - startedAt, outcome: err.outcome });
+    return { contextId, result: null, error: err, outcome: err.outcome };
   }
 }
 
@@ -424,10 +436,19 @@ export async function startScheduler(notify = null) {
 
     const task = cron.schedule(
       mission.cron,
-      () => executeMission(mission, { notify, source: 'cron' }),
+      () => {
+        const previous = readRun(`mission:${mission.name}`);
+        if (previous && !['running', 'completed'].includes(previous.status)) return;
+        return executeMission(mission, { notify, source: 'cron' });
+      },
       { timezone: mission.timezone || 'UTC' },
     );
 
+    // Resume an interrupted occurrence immediately; completed occurrences wait
+    // for their next cron tick. The disk lock arbitrates multiple processes.
+    if (readRun(`mission:${mission.name}`)?.status === 'running') {
+      void executeMission(mission, { notify, source: 'recovery' });
+    }
     tasks.push(task);
     log.info('Mission scheduled', { name: mission.name, cron: mission.cron, contextId: baseContextId });
   }

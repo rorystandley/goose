@@ -27,7 +27,24 @@ vi.mock('node-cron', () => ({
 }));
 
 const mockRunAgent = vi.hoisted(() => vi.fn());
-vi.mock('../../agent/loop.js', () => ({ runAgent: mockRunAgent }));
+vi.mock('../../agent/loop.js', () => ({
+  runAgent: async (...args) => {
+    const value = await mockRunAgent(...args);
+    return typeof value === 'string' ? { status: 'completed', result: value, verified: false } : value;
+  },
+}));
+const runStore = vi.hoisted(() => new Map());
+vi.mock('../../execution/store.js', () => ({
+  fingerprint: value => JSON.stringify(value),
+  readRun: id => runStore.get(id) ?? null,
+  writeRun: (id, state) => runStore.set(id, structuredClone(state)),
+  acquireRun: () => () => {},
+}));
+vi.mock('../../execution/verify.js', () => ({
+  validateCriteria: () => {},
+  snapshotArtifacts: async () => ({}),
+  verifyArtifacts: async () => ({ verified: true, evidence: [] }),
+}));
 
 vi.mock('../../tools/index.js', () => ({
   initTools: vi.fn().mockResolvedValue(undefined),
@@ -89,6 +106,7 @@ async function runCronCallback(mission, notifyFn = null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  runStore.clear();
   mockValidate.mockReturnValue(true);
   mockReadFileSync.mockImplementation(() => { throw new Error('ENOENT'); });
   mockSchedule.mockReturnValue({ stop: vi.fn() });

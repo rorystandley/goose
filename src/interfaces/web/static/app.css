@@ -572,7 +572,7 @@
     /* ── Kanban board grid ───────────────────────────────────────── */
     #kanban-board {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, minmax(220px, 1fr));
       gap: 8px;
       padding: 6px 8px;
       flex: 1;
@@ -607,6 +607,7 @@
     }
     .kb-col[data-status="ready"]       .kb-col-header { color: var(--blue); }
     .kb-col[data-status="in-progress"] .kb-col-header { color: var(--orange); }
+    .kb-col[data-status="blocked"]     .kb-col-header { color: var(--orange); }
     .kb-col[data-status="done"]        .kb-col-header { color: var(--green); }
 
     .kb-count {
@@ -803,7 +804,9 @@
       gap: 6px;
       flex-shrink: 0;
     }
-    .kb-add-form.open { display: flex; }
+    .kb-add-form.open { display: flex; flex: 1; min-height: 0; overflow-y: auto; }
+    .kb-add-form > * { flex-shrink: 0; }
+    .kb-col:has(.kb-add-form.open) .kb-cards { display: none; }
 
     .kb-form-input, .kb-form-textarea, .kb-form-select {
       background: var(--surface-3);
