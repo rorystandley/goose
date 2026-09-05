@@ -7,7 +7,8 @@ function snapshot(name) {
   let entry = state.get(name);
   try {
     const run = readRun(`mission:${name}`);
-    if (run && (!entry || run.startedAt > (entry.startedAt ?? '') || run.finishedAt > (entry.lastRun ?? ''))) {
+    const observedAt = entry?.status === 'running' ? entry.startedAt : entry?.lastRun ?? entry?.startedAt ?? '';
+    if (run && (!entry || (run.finishedAt ?? run.startedAt) > observedAt)) {
       entry = { status: run.status, startedAt: run.startedAt, lastRun: run.finishedAt ?? null,
         lastError: run.status === 'completed' ? null : run.outcome?.result ?? null,
         outcome: run.outcome, lastDuration: run.finishedAt ? new Date(run.finishedAt) - new Date(run.startedAt) : null };

@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const mockReadRun = vi.hoisted(() => vi.fn(() => null));
+vi.mock('../../execution/store.js', () => ({ readRun: mockReadRun }));
+
 const mockBroadcast = vi.hoisted(() => vi.fn());
 vi.mock('../../interfaces/web/sse.js', () => ({
   broadcast: mockBroadcast,
@@ -16,6 +19,8 @@ const {
 
 beforeEach(() => {
   resetState();
+  mockReadRun.mockReset();
+  mockReadRun.mockReturnValue(null);
   mockBroadcast.mockClear();
 });
 
@@ -84,4 +89,11 @@ describe('scheduler/state', () => {
     resetState();
     expect(getAllMissionStates()).toEqual([]);
   });
+});
+
+
+it('does not replace a new running state with the previous persisted completion', () => {
+  mockReadRun.mockReturnValue({ status: 'completed', startedAt: '2020-01-01T00:00:00.000Z', finishedAt: '2020-01-01T00:01:00.000Z' });
+  recordMissionStart('m1');
+  expect(getMissionState('m1').status).toBe('running');
 });

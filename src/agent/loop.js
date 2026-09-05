@@ -1,4 +1,5 @@
 import config from '../config.js';
+import { isToolFailure } from '../execution/tool-result.js';
 import { getHistory, addMessage } from './memory.js';
 import { getFactsAsText } from './facts.js';
 import { toolMap, getToolDefinitions } from '../tools/index.js';
@@ -63,7 +64,7 @@ Use record_thought when something strikes you while you work — a curious patte
 export async function runAgent(task, contextId, options = {}) {
   const {
     onToolCall = async ({ requiresApproval }) => !requiresApproval,
-    onToolResult, onCheckpoint, structured = false,
+    onToolResult, onCheckpoint, structured = false, contextTokens,
     maxIterations = config.MAX_TOOL_ITERATIONS, subAgentTools,
     maxToolCallsPerIteration = Infinity, model: modelOverride,
   } = options;
@@ -98,7 +99,7 @@ export async function runAgent(task, contextId, options = {}) {
     if (state.denied && !state.calls) {
       let content = 'Action was denied by the user.';
       try {
-        const reply = await chat({ model: state.model, messages: state.messages });
+        const reply = await chat({ model: state.model, messages: state.messages, contextTokens });
         content = stripThinking(reply.content || 'Action cancelled.');
       } catch { /* Denial remains blocked even when finalisation fails. */ }
       return finish('blocked', content, { reason: 'approval_denied' });
@@ -106,7 +107,7 @@ export async function runAgent(task, contextId, options = {}) {
     if (!state.calls) {
       let reply;
       try {
-        reply = await chat({ model: state.model, messages: state.messages, tools: toolDefinitions });
+        reply = await chat({ model: state.model, messages: state.messages, tools: toolDefinitions, contextTokens });
       } catch (err) {
         const retryable = [408, 429].includes(err.status) || err.status >= 500 ||
           /ECONN|ETIMEDOUT|fetch failed|connection|timeout|timed out|offline|socket/i.test(`${err.code} ${err.message}`);
@@ -156,7 +157,7 @@ export async function runAgent(task, contextId, options = {}) {
           await save(); // Must succeed before executing the action.
           try {
             result = await tool.execute(args, undefined, { onToolCall, onToolResult });
-            failed = /^(error\b|failed to\b|tool execution error|access denied|command failed)/i.test(String(result));
+            failed = isToolFailure(result);
           } catch (err) {
             result = `Tool execution error: ${err.message}`;
             failed = true;
