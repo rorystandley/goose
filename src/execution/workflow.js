@@ -1,3 +1,4 @@
+import { isToolFailure } from './tool-result.js';
 import { runAgent } from '../agent/loop.js';
 import { acquireRun, fingerprint, readRun, writeRun } from './store.js';
 import { snapshotArtifacts, validateCriteria, verifyArtifacts } from './verify.js';
@@ -10,13 +11,14 @@ const outcome = (status, result, extra = {}) => ({ status, result, verified: fal
  * failures retry automatically. Completed tools and stages are never replayed.
  * restartCompleted starts a new scheduled occurrence after a terminal run.
  */
-export async function executeWorkflow({ id, definition, stages, acceptance = [], restartCompleted = false, startNew = false,
+export async function executeWorkflow({ id, definition, stages, acceptance = [], inputs = [], restartCompleted = false, startNew = false,
   maxAttempts = 3, retryDelayMs = 1000 }) {
   const release = acquireRun(id);
   if (!release) return outcome('blocked', 'This run is already owned by another worker.', { reason: 'run_locked' });
   let state;
   try {
     validateCriteria(acceptance);
+    validateCriteria(inputs);
     for (const stage of stages) validateCriteria(stage.acceptance);
     const signature = fingerprint(definition);
     state = readRun(id);
@@ -39,6 +41,12 @@ export async function executeWorkflow({ id, definition, stages, acceptance = [],
       save();
       return result;
     };
+    if (state.stage === 0 && !state.checkpoint && inputs.length) {
+      const check = await verifyArtifacts(inputs);
+      if (!check.verified) return finish(outcome('blocked',
+        `Required inputs are unavailable: ${check.evidence.filter(e => !e.passed).map(e => `${e.path}: ${e.error}`).join('; ')}`,
+        { reason: 'input_verification_failed', evidence: check.evidence }));
+    }
     for (; state.stage < stages.length;) {
       const stage = stages[state.stage];
       const task = typeof stage.task === 'function' ? stage.task(state.results.at(-1)?.result) : stage.task;
@@ -48,7 +56,7 @@ export async function executeWorkflow({ id, definition, stages, acceptance = [],
         state.checkpoint = { pendingTool: { name: stage.name } };
         save();
         const value = await stage.direct();
-        const failed = /^(error\b|failed to\b|tool execution error|access denied|command failed)/i.test(String(value));
+        const failed = isToolFailure(value);
         result = outcome(failed ? 'failed' : 'completed', String(value), { reason: failed ? 'tool_error' : undefined });
       } else {
         const limit = Math.max(1, Math.min(5, Number.isInteger(maxAttempts) ? maxAttempts : 3));

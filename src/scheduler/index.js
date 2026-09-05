@@ -272,6 +272,22 @@ export function makeSchedulerCallbacks(missionName, allowDangerous = false, capt
   return callbacks;
 }
 
+/** Limit each phase to the capabilities required by its task. */
+export function resolveMissionTools({ noTools, allowedTools } = {}) {
+  if (noTools) return { subAgentTools: { toolMap: {}, toolDefinitions: [] } };
+  if (allowedTools === undefined) return {};
+  if (!Array.isArray(allowedTools) || allowedTools.some(name => typeof name !== 'string' || !Object.hasOwn(toolMap, name))) {
+    throw new Error('allowedTools must list installed tool names');
+  }
+  const selected = [...new Set(allowedTools)].map(name => toolMap[name]);
+  return { subAgentTools: {
+    toolMap: Object.fromEntries(selected.map(tool => [tool.name, tool])),
+    toolDefinitions: selected.map(tool => ({ type: 'function', function: {
+      name: tool.name, description: tool.description, parameters: tool.parameters,
+    } })),
+  } };
+}
+
 // ---------------------------------------------------------------------------
 // Mission execution
 // ---------------------------------------------------------------------------
@@ -323,13 +339,16 @@ export async function executeMission(mission, { notify = null, source = 'cron', 
         ...makeSchedulerCallbacks(mission.name, phase.allowDangerous ?? false),
         ...(phase.maxIterations ? { maxIterations: phase.maxIterations } : {}),
         ...(phase.maxToolCallsPerIteration ? { maxToolCallsPerIteration: phase.maxToolCallsPerIteration } : {}),
-        ...(phase.noTools ? { subAgentTools: { toolMap: {}, toolDefinitions: [] } } : {}),
+        ...resolveMissionTools(phase),
+        ...(phase.contextTokens || mission.contextTokens ? { contextTokens: phase.contextTokens || mission.contextTokens } : {}),
         ...(phase.model || mission.model ? { model: phase.model || mission.model } : {}),
       },
     })) : [{
       name: 'execute', task: buildTask(mission), contextId,
       options: {
         ...makeSchedulerCallbacks(mission.name, mission.allowDangerous ?? false),
+        ...resolveMissionTools(mission),
+        ...(mission.contextTokens ? { contextTokens: mission.contextTokens } : {}),
         ...(mission.maxIterations ? { maxIterations: mission.maxIterations } : {}),
         ...(mission.maxToolCallsPerIteration ? { maxToolCallsPerIteration: mission.maxToolCallsPerIteration } : {}),
         ...(mission.model ? { model: mission.model } : {}),
@@ -353,7 +372,7 @@ export async function executeMission(mission, { notify = null, source = 'cron', 
     }
     const outcome = await executeWorkflow({
       id: `mission:${mission.name}`, definition: mission, stages,
-      acceptance: mission.acceptance ?? [], restartCompleted: true, startNew,
+      acceptance: mission.acceptance ?? [], inputs: mission.inputs ?? [], restartCompleted: true, startNew,
       maxAttempts: mission.maxAttempts,
     });
     if (outcome.reason === 'run_locked') return { contextId, result: null, error: null, outcome };

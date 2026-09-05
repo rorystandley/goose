@@ -1,0 +1,240 @@
+{
+  "missions": [
+    {
+      "name": "morning-briefing",
+      "cron": "0 8 * * *",
+      "freshContext": true,
+      "contextId": "mission-morning-briefing",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "timezone": "Europe/London",
+      "speakResponse": true,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "gather",
+          "captureToolResults": true,
+          "allowedTools": [
+            "get_datetime",
+            "web_search"
+          ],
+          "maxIterations": 6,
+          "maxToolCallsPerIteration": 1,
+          "task": "Call get_datetime, then web_search for 'weather YOUR_CITY UK today', then web_search for 'UK news headlines today'. Use the date returned by get_datetime. Gather sources only; do not write the briefing yet."
+        },
+        {
+          "name": "compose",
+          "injectPreviousResult": true,
+          "noTools": true,
+          "task": "Using only the supplied tool results, write the user's morning briefing in under 220 words. Use exactly these headings: '# Morning Briefing', '## Date', '## Weather', '## Headlines', '## Sources'. Include today's date, YOUR_CITY temperature and conditions, and 2-3 headlines with one sentence each. List the actual weather and headline URLs in Sources, copied exactly from the tool results. Distinguish forecasts from observations. Omit claims that lack evidence. No preamble or sign-off."
+        }
+      ],
+      "saveResponseTo": "data/reports/morning-briefing.md",
+      "maxAttempts": 3,
+      "acceptance": [
+        {
+          "type": "file",
+          "path": "data/reports/morning-briefing.md",
+          "minBytes": 250,
+          "contains": [
+            "# Morning Briefing",
+            "## Date",
+            "## Weather",
+            "## Headlines",
+            "## Sources",
+            "https://"
+          ]
+        }
+      ],
+      "contextTokens": 16384
+    },
+    {
+      "name": "data-backup",
+      "cron": "0 2 * * *",
+      "direct": "backup_data",
+      "contextId": "mission-data-backup",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "timezone": "Europe/London",
+      "speakOnFailure": true,
+      "enabled": false,
+      "saveResponseTo": "data/reports/backup-latest.txt",
+      "acceptance": [
+        {
+          "type": "file",
+          "path": "data/reports/backup-latest.txt",
+          "minBytes": 100,
+          "contains": [
+            "Backup complete:",
+            "Snapshot:",
+            "Files saved:",
+            "Snapshots remaining:"
+          ],
+          "allowUnchanged": true
+        }
+      ]
+    },
+    {
+      "name": "pain-scanner",
+      "cron": "0 10 * * *",
+      "freshContext": true,
+      "contextId": "mission-pain-scanner",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "timezone": "Europe/London",
+      "enabled": false,
+      "saveResponseTo": "data/pain-points.md",
+      "phases": [
+        {
+          "name": "gather",
+          "captureToolResults": true,
+          "allowedTools": [
+            "get_datetime",
+            "web_search"
+          ],
+          "maxIterations": 8,
+          "maxToolCallsPerIteration": 1,
+          "task": "Call get_datetime first. Then call web_search once for each of these four queries:\n1. site:reddit.com/r/SaaS OR site:reddit.com/r/Entrepreneur \"frustrating\" OR \"I wish\" workflow\n2. site:news.ycombinator.com \"Ask HN\" \"pain\" OR \"frustrating\"\n3. site:indiehackers.com \"I built this because\" OR \"tired of\"\n4. small business manual reconciliation invoicing spreadsheet pain points alternatives\nCollect evidence of specific user problems and existing solutions. Return the tool data; do not invent metrics or dates. Search coverage may be incomplete."
+        },
+        {
+          "name": "analyse",
+          "injectPreviousResult": true,
+          "noTools": true,
+          "task": "Use ONLY the gathered search results to write an actionable product-research report for the user, 500-700 words. Use exactly these headings: '# Pain Points Report', '## Research Date', '## Problems', '## Existing Solutions', '## Opportunities', '## Limitations', '## Sources'. Include today's date from get_datetime. Identify 3-5 specific problems only where the supplied evidence supports them; fewer is better than fabricated evidence. For each give the audience, evidence, an existing workaround and a small product opportunity. Cite the source URL beside each factual claim, copied exactly from the tool results. Clearly distinguish your proposed product ideas from observed facts. Do not invent quotes, engagement counts, willingness-to-pay, publication dates, or claim to have read full Reddit threads. If evidence is only a search snippet say so in Limitations. List all cited URLs under Sources. No artificial VERIFIED labels and no claim that source content has been independently verified.\n\nBefore returning your answer, check that all seven required headings appear verbatim as separate sections. Do not combine Existing Solutions and Opportunities. Put the proposed product ideas in the Opportunities section. Finish with Limitations and Sources."
+        }
+      ],
+      "maxAttempts": 3,
+      "acceptance": [
+        {
+          "type": "file",
+          "path": "data/pain-points.md",
+          "minBytes": 1500,
+          "contains": [
+            "# Pain Points Report",
+            "## Research Date",
+            "## Problems",
+            "## Existing Solutions",
+            "## Opportunities",
+            "## Limitations",
+            "## Sources",
+            "https://"
+          ]
+        }
+      ],
+      "contextTokens": 16384
+    },
+    {
+      "name": "product-creator",
+      "cron": "0 14 * * MON,THU",
+      "freshContext": true,
+      "contextId": "mission-product-creator",
+      "slackChannel": "YOUR_CHANNEL_ID_HERE",
+      "timezone": "Europe/London",
+      "enabled": false,
+      "phases": [
+        {
+          "name": "read-research",
+          "captureToolResults": true,
+          "allowedTools": [
+            "read_file",
+            "list_directory"
+          ],
+          "maxIterations": 5,
+          "maxToolCallsPerIteration": 1,
+          "task": "Call read_file for 'data/pain-points.md', then list_directory for 'data/products'. Read the source report and avoid repeating any existing product directory name. The 'latest' directory is a staging area, not a product."
+        },
+        {
+          "name": "design",
+          "injectPreviousResult": true,
+          "noTools": true,
+          "task": "Choose ONE concrete problem supported by the supplied research that differs from existing product directories. Write a 400-600 word product brief with exactly these headings: '# Product Brief', '## Problem', '## Evidence', '## Product', '## MVP', '## Validation', '## First Asset', '## Next Actions'. Include a distinct product name and a lowercase product-name slug under Product. Under Evidence cite real URLs copied from the research and state what is observed versus assumed. Specify the customer, a tightly scoped MVP, and a price hypothesis that still needs testing. Under First Asset select a useful checklist or how-to guide, suitable for a complete Markdown draft, not a social-media post. Under Next Actions give 3 practical actions for the user. Do not claim demand or willingness-to-pay is proven. Do not publish anything."
+        },
+        {
+          "name": "create-draft",
+          "injectPreviousResult": true,
+          "allowedTools": [
+            "write_file"
+          ],
+          "allowDangerous": true,
+          "maxIterations": 7,
+          "maxToolCallsPerIteration": 1,
+          "task": "Create the complete Markdown checklist or how-to guide specified in the product brief below (500-900 words). Include actual usable steps, not an outline. Keep it a local draft. Call write_file exactly four times:\n1. Save the product brief below verbatim to 'data/products/latest/design.md'.\n2. Save the finished asset to 'data/products/latest/asset.md', using '# Draft Asset' as its first heading.\n3. Save the same product brief to 'data/products/[product-slug]/design.md', using the new slug from the brief.\n4. Save the same finished asset to 'data/products/[product-slug]/asset.md'.\nDo not reuse an existing product slug, execute commands, or publish externally. Once all four writes succeed respond with a short result containing the product name and saved paths.",
+          "acceptance": [
+            {
+              "type": "file",
+              "path": "data/products/latest/design.md",
+              "minBytes": 1000,
+              "contains": [
+                "# Product Brief",
+                "## Problem",
+                "## Evidence",
+                "## MVP",
+                "## Next Actions",
+                "https://"
+              ]
+            },
+            {
+              "type": "file",
+              "path": "data/products/latest/asset.md",
+              "minBytes": 1500,
+              "contains": [
+                "# Draft Asset"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "summarise",
+          "injectPreviousResult": true,
+          "noTools": true,
+          "task": "Write a concise handoff under these exact headings: '# Product Handoff', '## Product', '## Saved Files', '## Next Actions'. Summarise the selected product from the earlier product brief, list the actual saved files from the preceding tool results, and give three specific next actions for the user. Say this is a local draft awaiting review. Keep it under 180 words. Do not claim it was published or that demand was validated."
+        }
+      ],
+      "maxAttempts": 3,
+      "saveResponseTo": "data/products/latest/summary.md",
+      "inputs": [
+        {
+          "type": "file",
+          "path": "data/pain-points.md",
+          "minBytes": 1500,
+          "contains": [
+            "# Pain Points Report",
+            "## Research Date",
+            "## Sources",
+            "https://"
+          ],
+          "maxAgeHours": 48
+        }
+      ],
+      "acceptance": [
+        {
+          "type": "file",
+          "path": "data/products/latest/design.md",
+          "minBytes": 1000,
+          "contains": [
+            "# Product Brief",
+            "## Evidence",
+            "## MVP",
+            "https://"
+          ]
+        },
+        {
+          "type": "file",
+          "path": "data/products/latest/asset.md",
+          "minBytes": 1500,
+          "contains": [
+            "# Draft Asset"
+          ]
+        },
+        {
+          "type": "file",
+          "path": "data/products/latest/summary.md",
+          "minBytes": 200,
+          "contains": [
+            "# Product Handoff",
+            "## Saved Files",
+            "## Next Actions"
+          ]
+        }
+      ],
+      "contextTokens": 16384
+    }
+  ]
+}

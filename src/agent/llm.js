@@ -60,25 +60,26 @@ async function ensureClients() {
  *   rawAssistantMessage: object
  * }>}
  */
-export async function chat({ model, messages, tools }) {
+export async function chat({ model, messages, tools, contextTokens }) {
   await ensureClients();
 
   if (config.LLM_BACKEND === 'vllm') {
     return _chatVllm({ model, messages, tools });
   }
-  return _chatOllama({ model, messages, tools });
+  return _chatOllama({ model, messages, tools, contextTokens });
 }
 
 // ---------------------------------------------------------------------------
 // Ollama adapter
 // ---------------------------------------------------------------------------
 
-async function _chatOllama({ model, messages, tools }) {
+async function _chatOllama({ model, messages, tools, contextTokens }) {
   const response = await _ollamaClient.chat({
     model,
     messages,
     tools: tools?.length ? tools : undefined,
     think: false,
+    ...(contextTokens ? { options: { num_ctx: contextTokens } } : {}),
   });
 
   const msg = response.message;

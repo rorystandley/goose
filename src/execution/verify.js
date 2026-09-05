@@ -17,6 +17,9 @@ export function validateCriteria(criteria = []) {
     if (c.minBytes !== undefined && (!Number.isInteger(c.minBytes) || c.minBytes < 1)) {
       throw new Error('minBytes must be a positive integer');
     }
+    if (c.maxAgeHours !== undefined && (!Number.isFinite(c.maxAgeHours) || c.maxAgeHours <= 0)) {
+      throw new Error('maxAgeHours must be a positive number');
+    }
     for (const key of ['contains', 'jsonKeys']) {
       if (c[key] !== undefined && (!Array.isArray(c[key]) || c[key].some(v => typeof v !== 'string'))) {
         throw new Error(`${key} must be an array of strings`);
@@ -45,6 +48,10 @@ export async function verifyArtifacts(criteria = [], baseline = {}) {
   for (const c of criteria) {
     const file = resolveFile(c.path);
     try {
+      if (c.maxAgeHours !== undefined) {
+        const stat = await fs.stat(file);
+        if (Date.now() - stat.mtimeMs > c.maxAgeHours * 3600000) throw new Error(`File is older than ${c.maxAgeHours} hours`);
+      }
       const content = await fs.readFile(file);
       if (content.length < (c.minBytes ?? 1)) throw new Error('File is empty or smaller than minBytes');
       const digest = fingerprint(content);
