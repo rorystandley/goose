@@ -19,7 +19,7 @@
           ],
           "maxIterations": 6,
           "maxToolCallsPerIteration": 1,
-          "task": "Call get_datetime, then web_search for 'weather YOUR_CITY UK today', then web_search for 'UK news headlines today'. Use the date returned by get_datetime. Gather sources only; do not write the briefing yet."
+          "task": "Call get_datetime, then web_search for 'weather YOUR_CITY UK today', then web_search for 'UK news headlines today'. Use the date returned by get_datetime. Gather sources only; do not write the briefing yet.\nAfter completing all requested tool calls, reply only GATHERED. The raw tool results are captured automatically; do not repeat or summarise them in your final response."
         },
         {
           "name": "compose",
@@ -91,7 +91,7 @@
           ],
           "maxIterations": 8,
           "maxToolCallsPerIteration": 1,
-          "task": "Call get_datetime first. Then call web_search once for each of these four queries:\n1. site:reddit.com/r/SaaS OR site:reddit.com/r/Entrepreneur \"frustrating\" OR \"I wish\" workflow\n2. site:news.ycombinator.com \"Ask HN\" \"pain\" OR \"frustrating\"\n3. site:indiehackers.com \"I built this because\" OR \"tired of\"\n4. small business manual reconciliation invoicing spreadsheet pain points alternatives\nCollect evidence of specific user problems and existing solutions. Return the tool data; do not invent metrics or dates. Search coverage may be incomplete."
+          "task": "Call get_datetime first. Then call web_search once for each of these four queries:\n1. site:reddit.com/r/SaaS OR site:reddit.com/r/Entrepreneur \"frustrating\" OR \"I wish\" workflow\n2. site:news.ycombinator.com \"Ask HN\" \"pain\" OR \"frustrating\"\n3. site:indiehackers.com \"I built this because\" OR \"tired of\"\n4. small business manual reconciliation invoicing spreadsheet pain points alternatives\nCollect evidence of specific user problems and existing solutions. Return the tool data; do not invent metrics or dates. Search coverage may be incomplete.\nAfter completing all requested tool calls, reply only GATHERED. The raw tool results are captured automatically; do not repeat or summarise them in your final response."
         },
         {
           "name": "analyse",
@@ -138,7 +138,7 @@
           ],
           "maxIterations": 5,
           "maxToolCallsPerIteration": 1,
-          "task": "Call read_file for 'data/pain-points.md', then list_directory for 'data/products'. Read the source report and avoid repeating any existing product directory name. The 'latest' directory is a staging area, not a product."
+          "task": "Call read_file for 'data/pain-points.md', then list_directory for 'data/products'. Read the source report and avoid repeating any existing product directory name. The 'latest' directory is a staging area, not a product.\nAfter completing all requested tool calls, reply only GATHERED. The raw tool results are captured automatically; do not repeat or summarise them in your final response."
         },
         {
           "name": "design",
