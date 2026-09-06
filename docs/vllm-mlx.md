@@ -83,7 +83,7 @@ vllm-mlx serve mlx-community/Qwen3-14B-4bit \
   --enable-auto-tool-choice \
   --tool-call-parser qwen \
   --host 0.0.0.0 \
-  --port 8000
+  --port 8100
 ```
 
 The first run downloads the model (~9 GB). Subsequent starts are near-instant.
@@ -95,14 +95,14 @@ The first run downloads the model (~9 GB). Subsequent starts are near-instant.
 | `--enable-auto-tool-choice` | **Required** — enables function/tool calling support |
 | `--tool-call-parser qwen` | **Required for Qwen models** — selects the correct tool call format |
 | `--host 0.0.0.0` | Listen on all interfaces (default: localhost only) |
-| `--port 8000` | API port (default: 8000) |
+| `--port 8100` | API port. Goose uses 8100 so it does not collide with Azure Logic Apps on 8000/8001 |
 | `--max-model-len 8192` | Limit context length to save memory |
 | `--continuous-batching` | Enable for multiple concurrent users |
 
 ### Verify it's running
 
 ```bash
-curl http://localhost:8000/v1/models
+curl http://localhost:8100/v1/models
 ```
 
 You should see a JSON response listing the served model.
@@ -116,9 +116,15 @@ In your `.env` file:
 ```bash
 # Switch to vllm-mlx backend
 LLM_BACKEND=vllm
-VLLM_HOST=http://localhost:8000
+VLLM_PORT=8100
+VLLM_HOST=http://localhost:8100
 VLLM_MODEL=mlx-community/Qwen3-14B-4bit    # or Qwen3.5-35B-A3B-4bit on 36GB+ machines
 ```
+
+If `VLLM_HOST` is unset, Goose uses `http://localhost:${VLLM_PORT}`.
+An explicit `VLLM_HOST` takes precedence. Set `VLLM_PORT` in the environment
+used to start PM2 as well, so its server command and Goose use the same port.
+Both default to 8100 when the port is missing or outside the integer range 1–65535.
 
 That's it. All existing functionality — missions, tools, Slack, CLI — works identically. The provider abstraction in `src/agent/llm.js` handles the API format differences automatically.
 
@@ -144,7 +150,7 @@ For production, uncomment the vllm process in `ecosystem.config.cjs`:
 {
   name: 'vllm',
   script: 'vllm-mlx',
-  args: 'serve mlx-community/Qwen3-14B-4bit --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port 8000',
+  args: 'serve mlx-community/Qwen3-14B-4bit --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port 8100',
   interpreter: 'none',
   autorestart: true,
   restart_delay: 5000,
@@ -188,7 +194,7 @@ Only one backend needs to be running at a time. There's no need to have both Oll
 
 ### "vllm-mlx unreachable"
 
-1. Check the server is running: `curl http://localhost:8000/v1/models`
+1. Check the server is running: `curl http://localhost:8100/v1/models`
 2. Verify `VLLM_HOST` in `.env` matches the port you started vllm on
 3. Check vllm logs for startup errors
 

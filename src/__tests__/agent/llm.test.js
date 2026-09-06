@@ -12,7 +12,7 @@ let mockConfig = vi.hoisted(() => ({
   LLM_BACKEND: 'ollama',
   OLLAMA_HOST: 'http://localhost:11434',
   OLLAMA_MODEL: 'qwen3:14b',
-  VLLM_HOST: 'http://localhost:8000',
+  VLLM_HOST: 'http://localhost:8100',
   VLLM_MODEL: 'mlx-community/Qwen3.5-35B-A3B-4bit',
 }));
 

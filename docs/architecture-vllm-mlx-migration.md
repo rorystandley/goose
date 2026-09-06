@@ -114,7 +114,7 @@ npm install openai
 Add to the frozen config object:
 ```javascript
 LLM_BACKEND: process.env.LLM_BACKEND || 'ollama',        // 'ollama' | 'vllm'
-VLLM_HOST:   process.env.VLLM_HOST   || 'http://localhost:8000',
+VLLM_HOST:   process.env.VLLM_HOST   || 'http://localhost:8100',
 VLLM_MODEL:  process.env.VLLM_MODEL  || '',
 ```
 
@@ -250,7 +250,7 @@ Mock helpers update:
 {
   name: 'vllm',
   script: 'vllm',
-  args: 'serve mlx-community/Qwen3.5-35B-A3B-4bit --enable-auto-tool-choice --host 0.0.0.0 --port 8000',
+  args: 'serve mlx-community/Qwen3.5-35B-A3B-4bit --enable-auto-tool-choice --host 0.0.0.0 --port 8100',
   interpreter: 'none',
   autorestart: true,
   restart_delay: 5000,
@@ -264,7 +264,8 @@ Mock helpers update:
 ```bash
 # LLM Backend — 'ollama' (default) or 'vllm' (vllm-mlx, Apple Silicon optimized)
 # LLM_BACKEND=ollama
-# VLLM_HOST=http://localhost:8000
+# VLLM_PORT=8100
+# VLLM_HOST=http://localhost:8100
 # VLLM_MODEL=mlx-community/Qwen3.5-35B-A3B-4bit
 ```
 

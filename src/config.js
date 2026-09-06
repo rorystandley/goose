@@ -28,6 +28,10 @@ function envValueOrFallback(key, fallback) {
   return Object.hasOwn(process.env, key) ? process.env[key] : fallback;
 }
 
+const requestedVllmPort = Number(process.env.VLLM_PORT);
+const vllmPort = Number.isInteger(requestedVllmPort) && requestedVllmPort > 0 && requestedVllmPort <= 65535
+  ? requestedVllmPort : 8100;
+
 const config = Object.freeze({
   SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
   SLACK_APP_TOKEN: process.env.SLACK_APP_TOKEN,
@@ -59,7 +63,8 @@ const config = Object.freeze({
   ROUTING_MODEL: process.env.ROUTING_MODEL || '',
   // LLM backend — 'ollama' (default) or 'vllm' (vllm-mlx, Apple Silicon optimised)
   LLM_BACKEND: process.env.LLM_BACKEND || 'ollama',
-  VLLM_HOST: process.env.VLLM_HOST || 'http://localhost:8000',
+  VLLM_PORT: vllmPort,
+  VLLM_HOST: process.env.VLLM_HOST || `http://localhost:${vllmPort}`,
   VLLM_MODEL: process.env.VLLM_MODEL || '',
   // Voice interface — requires: brew install sox whisper-cpp
   VOICE_WHISPER_MODEL: process.env.VOICE_WHISPER_MODEL || 'base.en',
