@@ -11,6 +11,7 @@
     "dev:web": "WEB_ENABLED=true node --watch src/cli.js",
     "voice": "node src/voice.js",
     "dev:voice": "node --watch src/voice.js",
+    "plugins:link": "node scripts/link-plugins.js",
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest",
