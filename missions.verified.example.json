@@ -97,7 +97,7 @@
           "name": "analyse",
           "injectPreviousResult": true,
           "noTools": true,
-          "task": "Use ONLY the gathered search results to write an actionable product-research report for the user, 500-700 words. Use exactly these headings: '# Pain Points Report', '## Research Date', '## Problems', '## Existing Solutions', '## Opportunities', '## Limitations', '## Sources'. Include today's date from get_datetime. Identify 3-5 specific problems only where the supplied evidence supports them; fewer is better than fabricated evidence. For each give the audience, evidence, an existing workaround and a small product opportunity. Cite the source URL beside each factual claim, copied exactly from the tool results. Clearly distinguish your proposed product ideas from observed facts. Do not invent quotes, engagement counts, willingness-to-pay, publication dates, or claim to have read full Reddit threads. If evidence is only a search snippet say so in Limitations. List all cited URLs under Sources. No artificial VERIFIED labels and no claim that source content has been independently verified.\n\nBefore returning your answer, check that all seven required headings appear verbatim as separate sections. Do not combine Existing Solutions and Opportunities. Put the proposed product ideas in the Opportunities section. Finish with Limitations and Sources."
+          "task": "Fill in the Markdown template below using ONLY the supplied search results. Return the completed template, with every heading kept verbatim and in order. Write 400-550 words total. Use 3 specific problems, or fewer if evidence is insufficient. Copy actual source URLs exactly from tool results. Do not invent quotes, engagement counts, publication dates, or willingness-to-pay. Clearly label proposed ideas and price assumptions as hypotheses. Search snippets are evidence of what the snippet says, not proof of market demand. Do not claim full threads were read or independently verified. Keep Existing Solutions and Opportunities as separate sections.\n\n# Pain Points Report\n## Research Date\n[Today's date from get_datetime.]\n## Problems\n[Numbered problems. For each: audience, observed problem, and source URL.]\n## Existing Solutions\n[Current tools or workarounds mentioned in the evidence, with source URLs. State unknowns honestly.]\n## Opportunities\n[One small proposed product for each problem above, explaining its scope and what would need validation. These are hypotheses.]\n## Limitations\n[Explain the search coverage and snippet-only evidence limits.]\n## Sources\n[List every cited URL.]"
         }
       ],
       "maxAttempts": 3,
@@ -155,7 +155,7 @@
           "allowDangerous": true,
           "maxIterations": 7,
           "maxToolCallsPerIteration": 1,
-          "task": "Create the complete Markdown checklist or how-to guide specified in the product brief below (500-900 words). Include actual usable steps, not an outline. Keep it a local draft. Call write_file exactly four times:\n1. Save the product brief below verbatim to 'data/products/latest/design.md'.\n2. Save the finished asset to 'data/products/latest/asset.md', using '# Draft Asset' as its first heading.\n3. Save the same product brief to 'data/products/[product-slug]/design.md', using the new slug from the brief.\n4. Save the same finished asset to 'data/products/[product-slug]/asset.md'.\nDo not reuse an existing product slug, execute commands, or publish externally. Once all four writes succeed respond with a short result containing the product name and saved paths.",
+          "task": "Create the complete Markdown checklist or how-to guide specified in the product brief below (400-600 words, at least 1200 bytes). Include actual usable steps, examples, decision points, and verification checks, not an outline. Keep it a local draft. Call write_file exactly four times:\n1. Save the product brief below verbatim to 'data/products/latest/design.md'.\n2. Save the finished asset to 'data/products/latest/asset.md', using '# Draft Asset' as its first heading. The asset must be at least 400 words; finish the full draft before writing it.\n3. Save the same product brief to 'data/products/[product-slug]/design.md', using the new slug from the brief.\n4. Save the same finished asset to 'data/products/[product-slug]/asset.md'.\nDo not reuse an existing product slug, execute commands, or publish externally. Once all four writes succeed respond with a short result containing the product name and saved paths.",
           "acceptance": [
             {
               "type": "file",
@@ -173,7 +173,7 @@
             {
               "type": "file",
               "path": "data/products/latest/asset.md",
-              "minBytes": 1500,
+              "minBytes": 1200,
               "contains": [
                 "# Draft Asset"
               ]
@@ -197,6 +197,10 @@
           "contains": [
             "# Pain Points Report",
             "## Research Date",
+            "## Problems",
+            "## Existing Solutions",
+            "## Opportunities",
+            "## Limitations",
             "## Sources",
             "https://"
           ],
@@ -218,7 +222,7 @@
         {
           "type": "file",
           "path": "data/products/latest/asset.md",
-          "minBytes": 1500,
+          "minBytes": 1200,
           "contains": [
             "# Draft Asset"
           ]
