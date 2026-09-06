@@ -286,7 +286,8 @@ No changes to `src/agent/` or `src/tools/` required.
 | `LLM_BACKEND` | | `ollama` | LLM backend — `ollama` or `vllm` ([setup guides](docs/ollama.md)) |
 | `OLLAMA_HOST` | | `http://localhost:11434` | Ollama API endpoint |
 | `OLLAMA_MODEL` | | `qwen2.5:14b` | Default model (used when routing is disabled) |
-| `VLLM_HOST` | | `http://localhost:8000` | vllm-mlx API endpoint (only when `LLM_BACKEND=vllm`) |
+| `VLLM_PORT` | | `8100` | vllm-mlx listen port (8000/8001 are reserved for Azure Logic Apps locally) |
+| `VLLM_HOST` | | `http://localhost:8100` | vllm-mlx API endpoint (only when `LLM_BACKEND=vllm`) |
 | `VLLM_MODEL` | | — | Model served by vllm-mlx (only when `LLM_BACKEND=vllm`) |
 | `AGENT_NAME` | | `Goose` | Name shown in responses |
 | `MAX_TOOL_ITERATIONS` | | `10` | Max tool calls per task before giving up |

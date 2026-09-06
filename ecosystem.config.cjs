@@ -7,6 +7,10 @@ const mlxTtsStudioPath = process.env.MLX_TTS_STUDIO_PATH
 const vllmMlxBin = process.env.VLLM_MLX_BIN
   || '/Users/rorystandley/.venvs/vllm/bin/vllm-mlx';
 const vllmModel = process.env.VLLM_MODEL || 'mlx-community/Qwen3-14B-4bit';
+// 8100: Azure Logic Apps local runtime binds 8000 (designer) and 8001 (func host)
+const requestedVllmPort = Number(process.env.VLLM_PORT);
+const vllmPort = Number.isInteger(requestedVllmPort) && requestedVllmPort > 0 && requestedVllmPort <= 65535
+  ? requestedVllmPort : 8100;
 
 module.exports = {
   apps: [
@@ -48,7 +52,7 @@ module.exports = {
     {
       name: 'vllm',
       script: vllmMlxBin,
-      args: `serve ${vllmModel} --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port 8000`,
+      args: `serve ${vllmModel} --enable-auto-tool-choice --tool-call-parser qwen --host 0.0.0.0 --port ${vllmPort}`,
       interpreter: 'none',
       autorestart: true,
       restart_delay: 5000,
