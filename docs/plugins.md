@@ -98,6 +98,28 @@ Goose auto-discovers npm packages matching either pattern in `node_modules`:
 
 No config required — install (or link) the package and restart.
 
+### Link the sibling source checkout
+
+For a local checkout at `~/Apps/goose` with plugin sources at
+`~/Apps/goose-plugins`, run this from Goose after installing dependencies:
+
+```bash
+npm run plugins:link
+```
+
+This discovers every `@goose-plugins/*` package in the sibling checkout and
+creates direct relative symlinks under `node_modules/@goose-plugins/`. It replaces
+existing symlinks (including pnpm store links), and refuses to replace real files
+or directories. For another source location, use
+`npm run plugins:link -- /absolute/path/to/goose-plugins`.
+
+Install each plugin's own runtime dependencies in its source directory first;
+for example, `npm install --omit=dev --prefix ../goose-plugins/twitter`.
+Node resolves dependencies from the real source directory. Run the link command
+again after `npm install`, `npm ci`, or `pnpm install`, which can replace these
+links, then restart both Goose and `goose-scheduler`. Plugin source edits are
+picked up on restart without reinstalling or publishing the plugin.
+
 ### Plugin structure
 
 ```
