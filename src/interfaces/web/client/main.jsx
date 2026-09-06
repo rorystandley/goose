@@ -224,7 +224,11 @@ function App() {
               <span className="operator-avatar">G</span>
             </div>
           </header>
-          <main id="main-content" tabIndex="-1">
+          <main
+            id="main-content"
+            className={view === "chat" ? "comms-view" : undefined}
+            tabIndex="-1"
+          >
             <div className="page-heading">
               <div>
                 <div className="eyebrow">

@@ -1114,9 +1114,8 @@ main {
   right: 10px;
   top: 22px;
 }
-.chat {
-  max-width: 1050px;
-  margin: auto;
+main.comms-view {
+  max-width: none;
 }
 .chat-top {
   display: flex;
