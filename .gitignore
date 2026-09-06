@@ -34,3 +34,8 @@ coverage/
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
+
+# Built web dashboard
+src/interfaces/web/dist/
+test-results/
+playwright-report/

@@ -31,8 +31,8 @@ const staticAssets = new Map([
   ['/assets/android-chrome-192x192.png', new URL('../../../docs/assets/android-chrome-192x192.png', import.meta.url)],
   ['/assets/android-chrome-512x512.png', new URL('../../../docs/assets/android-chrome-512x512.png', import.meta.url)],
   ['/assets/site.webmanifest', new URL('../../../docs/assets/site.webmanifest', import.meta.url)],
-  ['/app.css', new URL('./static/app.css', import.meta.url)],
-  ['/app.js', new URL('./static/app.js', import.meta.url)],
+  ['/app.css', new URL('./dist/app.css', import.meta.url)],
+  ['/app.js', new URL('./dist/app.js', import.meta.url)],
 ]);
 
 const contentTypes = new Map([

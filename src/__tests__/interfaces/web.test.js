@@ -773,3 +773,22 @@ describe('handleRequest — GET /api/plugins', () => {
     expect(res.writeHead).toHaveBeenCalledWith(500, expect.any(Object));
   });
 });
+
+
+describe('dashboard build assets', () => {
+  it.each([['/app.js', 'application/javascript'], ['/app.css', 'text/css']])('serves the bundled %s', async (path, contentType) => {
+    const res = mockRes();
+    await handleRequest(mockReq('GET', path), res);
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ 'Content-Type': expect.stringContaining(contentType) }));
+    expect(res._chunks[0].length).toBeGreaterThan(100);
+  });
+});
+
+describe('web approval completion', () => {
+  it('reports a denial when an approval expires outside the UI', async () => {
+    mockCreateApproval.mockReturnValueOnce({ id: 'expired-approval', promise: Promise.resolve(false) });
+    const result = await makeCallbacks('test-ctx').onToolCall({ toolName: 'write_file', args: {}, requiresApproval: true });
+    expect(result).toBe(false);
+    expect(mockSseWrite).toHaveBeenCalledWith('test-ctx', 'approvalResolved', { approvalId: 'expired-approval', approved: false });
+  });
+});

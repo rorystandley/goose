@@ -19,7 +19,9 @@ export function makeCallbacks(contextId) {
       const { id: approvalId, promise } = createApproval({ tool: toolName, args });
       const riskLevel = toolMap[toolName]?.riskLevel ?? 'dangerous';
       sseWrite(contextId, 'toolCall', { toolName, args, requiresApproval: true, approvalId, riskLevel });
-      return promise;
+      const approved = await promise;
+      sseWrite(contextId, 'approvalResolved', { approvalId, approved });
+      return approved;
     },
 
     onToolResult: ({ toolName, result }) => {
@@ -52,7 +54,9 @@ export function makeKanbanCallbacks(contextId, task) {
       // Dangerous — broadcast to every connected browser so the user can see it
       const { id: approvalId, promise } = createApproval({ tool: toolName, args });
       broadcast('kanbanApproval', { taskId: task.id, toolName, args, approvalId, riskLevel });
-      return promise;
+      const approved = await promise;
+      broadcast('approvalResolved', { approvalId, approved });
+      return approved;
     },
     onToolResult: ({ toolName, result }) => {
       sseWrite(contextId, 'toolResult', { toolName, result: String(result).slice(0, 500) });

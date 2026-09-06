@@ -74,3 +74,9 @@ jobs:
           SLACK_APP_TOKEN: xapp-ci-placeholder
           SLACK_SIGNING_SECRET: ci-signing-secret
           LOG_LEVEL: error
+
+      - name: Install browser for dashboard tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Test dashboard in Chromium
+        run: npm run test:web

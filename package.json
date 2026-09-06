@@ -12,10 +12,16 @@
     "voice": "node src/voice.js",
     "dev:voice": "node --watch src/voice.js",
     "plugins:link": "node scripts/link-plugins.js",
-    "lint": "eslint src/",
+    "lint": "eslint src/ vite.config.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build:web": "vite build",
+    "dev:ui": "vite",
+    "prepare": "npm run build:web",
+    "preweb": "npm run build:web",
+    "predev:web": "npm run build:web",
+    "test:web": "npm run build:web && playwright test"
   },
   "dependencies": {
     "@goose-plugins/backup": "file:../goose-plugins/backup",
@@ -23,17 +29,25 @@
     "@slack/bolt": "^3.19.0",
     "cron-parser": "^5.5.0",
     "dotenv": "^16.4.5",
+    "lucide-react": "^1.41.0",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "ollama": "^0.6.3",
     "openai": "^6.32.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.63.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^15.15.0",
+    "vite": "^7.3.6",
     "vitest": "^4.1.0"
   },
   "overrides": {
