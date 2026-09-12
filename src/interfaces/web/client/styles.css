@@ -1970,9 +1970,9 @@ main.comms-view {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px 16px;
-  margin-top: 4px;
-  padding: 14px 23px 18px;
+  gap: 6px 18px;
+  margin-top: 2px;
+  padding: 13px 23px 20px;
   border-top: 1px solid var(--line, #2a3328);
 }
 .tile-footer {
@@ -1986,10 +1986,11 @@ main.comms-view {
   margin: 0;
   color: #84947d;
   font-size: 10px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  line-height: 1.45;
 }
 .tile-text,
 .tile-empty {
