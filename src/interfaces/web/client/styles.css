@@ -1932,8 +1932,13 @@ main.comms-view {
   color: var(--muted, #8f9d88);
   font-size: 13px;
 }
+.tile-body {
+  display: grid;
+  gap: 0;
+}
 .tile-table-wrap {
   overflow-x: auto;
+  padding: 0 13px;
 }
 .tile-table {
   width: 100%;
@@ -1946,6 +1951,9 @@ main.comms-view {
   border-bottom: 1px solid var(--line, #2a3328);
   text-align: left;
 }
+.tile-table tbody tr:last-child td {
+  border-bottom: none;
+}
 .tile-table .right {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1953,21 +1961,47 @@ main.comms-view {
 .tile-table tr.tone-up td:last-child { color: #7dcea0; }
 .tile-table tr.tone-down td:last-child { color: #e07a7a; }
 .tile-muted,
-.tile-footer,
-.tile-updated,
 .tile-empty p {
   color: var(--muted, #8f9d88);
   font-size: 12px;
 }
-.tile-footer,
+.tile-meta {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 14px 23px 20px;
+  border-top: 1px solid var(--line, #2a3328);
+}
+.tile-footer {
+  margin: 0;
+  color: #a0b098;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .tile-updated {
-  display: block;
-  margin-top: 10px;
+  margin: 0;
+  color: #84947d;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+.tile-text,
+.tile-empty {
+  padding: 0 23px 18px;
+}
+.tile-text .tile-meta,
+.tile-empty .tile-meta {
+  margin: 14px -23px 0;
+  padding-left: 23px;
+  padding-right: 23px;
 }
 .tile-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 10px;
+  padding: 0 23px 4px;
 }
 .tile-stat {
   display: grid;
