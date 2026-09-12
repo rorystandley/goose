@@ -1966,18 +1966,14 @@ main.comms-view {
   font-size: 12px;
 }
 .tile-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px 18px;
+  display: grid;
+  gap: 6px;
   margin-top: 2px;
-  padding: 13px 23px 20px;
+  padding: 14px 23px 20px;
   border-top: 1px solid var(--line, #2a3328);
 }
 .tile-footer {
   margin: 0;
-  flex: 1 1 12rem;
   color: #a0b098;
   font-size: 12px;
   line-height: 1.45;
@@ -1989,8 +1985,7 @@ main.comms-view {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 .tile-text,
 .tile-empty {
