@@ -18,6 +18,7 @@ import { loadMissions, executeMission } from '../../scheduler/index.js';
 import { getAllMissionStates } from '../../scheduler/state.js';
 import { loadMonitors, getMonitorStates } from '../../monitors/index.js';
 import { loadPluginMetadata } from '../../plugins/metadata.js';
+import { listPluginTiles, loadPluginTile } from '../../plugins/tiles.js';
 import { CronExpressionParser } from 'cron-parser';
 
 const log = createLogger('web');
@@ -453,6 +454,34 @@ export async function handleRequest(req, res) {
     } catch (err) {
       log.error('Failed to load plugin metadata', { error: err.message });
       json(res, 500, { error: 'failed to load plugins' });
+    }
+    return;
+  }
+
+  // ── Plugin tile routes ──────────────────────────────────────────
+  // GET /api/tiles — list tile metadata from installed plugins
+  if (method === 'GET' && path === '/api/tiles') {
+    try {
+      const tiles = await listPluginTiles();
+      json(res, 200, { tiles });
+    } catch (err) {
+      log.error('Failed to list plugin tiles', { error: err.message });
+      json(res, 500, { error: 'failed to list tiles' });
+    }
+    return;
+  }
+
+  // GET /api/tiles/data?plugin=...&tile=... — load one tile's live payload
+  if (method === 'GET' && path === '/api/tiles/data') {
+    const packageName = url.searchParams.get('plugin');
+    const tileId = url.searchParams.get('tile');
+    try {
+      const result = await loadPluginTile(packageName, tileId);
+      json(res, 200, result);
+    } catch (err) {
+      const status = err.status || 500;
+      if (status >= 500) log.error('Failed to load plugin tile', { packageName, tileId, error: err.message });
+      json(res, status, { error: err.message || 'failed to load tile' });
     }
     return;
   }

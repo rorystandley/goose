@@ -1902,3 +1902,111 @@ main.comms-view {
     display: none;
   }
 }
+
+/* Plugin command tiles */
+.plugin-tiles {
+  margin-top: 28px;
+  display: grid;
+  gap: 16px;
+}
+.plugin-tiles .section-heading {
+  display: grid;
+  gap: 6px;
+}
+.plugin-tiles .section-heading h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.plugin-tiles .section-heading p {
+  margin: 0;
+  color: var(--muted, #8f9d88);
+  font-size: 14px;
+}
+.plugin-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.panel-description {
+  margin: 0 0 12px;
+  color: var(--muted, #8f9d88);
+  font-size: 13px;
+}
+.tile-table-wrap {
+  overflow-x: auto;
+}
+.tile-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tile-table th,
+.tile-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line, #2a3328);
+  text-align: left;
+}
+.tile-table .right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tile-table tr.tone-up td:last-child { color: #7dcea0; }
+.tile-table tr.tone-down td:last-child { color: #e07a7a; }
+.tile-muted,
+.tile-footer,
+.tile-updated,
+.tile-empty p {
+  color: var(--muted, #8f9d88);
+  font-size: 12px;
+}
+.tile-footer,
+.tile-updated {
+  display: block;
+  margin-top: 10px;
+}
+.tile-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+.tile-stat {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #2a3328);
+  border-radius: 6px;
+}
+.tile-stat span {
+  font-size: 11px;
+  color: var(--muted, #8f9d88);
+}
+.tile-stat.tone-up strong { color: #7dcea0; }
+.tile-stat.tone-down strong { color: #e07a7a; }
+.tile-text pre {
+  white-space: pre-wrap;
+  margin: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+.plugin-tiles-meta {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, #2a3328);
+}
+.plugin-tiles-meta ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.plugin-tiles-meta li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 13px;
+}
+.inline-error {
+  color: #e07a7a;
+  font-size: 13px;
+}

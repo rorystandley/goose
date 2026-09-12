@@ -31,6 +31,7 @@ import {
   Resource,
   ViewLink,
 } from "./components.jsx";
+import { PluginTiles } from "./pluginTiles.jsx";
 
 export function Overview({ dashboard: d }) {
   const tasks = d.data.kanban || [],
@@ -235,6 +236,7 @@ export function Overview({ dashboard: d }) {
           </div>
         </Panel>
       </div>
+      <PluginTiles dashboard={d} />
     </>
   );
 }
@@ -1206,6 +1208,19 @@ export function Plugins({ dashboard: d }) {
                 </details>
               ))}
             </div>
+            {p.tiles?.length > 0 && (
+              <div className="plugin-tiles-meta">
+                <span className="eyebrow">TILES</span>
+                <ul>
+                  {p.tiles.map((tile) => (
+                    <li key={tile.id}>
+                      <code>{tile.id}</code>
+                      <span>{tile.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Panel>
         ))}
       </div>

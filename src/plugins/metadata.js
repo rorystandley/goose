@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import config from '../config.js';
 import { createLogger } from '../logger.js';
+import { projectTileSummaries } from './tiles.js';
 
 const log = createLogger('plugins:metadata');
 
@@ -32,6 +33,16 @@ function projectTools(rawTools) {
   }));
 }
 
+function projectPlugin(mod, base) {
+  const rawTools = mod.tools ?? mod.default?.tools ?? [];
+  const rawTiles = mod.tiles ?? mod.default?.tiles ?? [];
+  return {
+    ...base,
+    tools: projectTools(rawTools),
+    tiles: projectTileSummaries(rawTiles),
+  };
+}
+
 async function loadNpmPluginMetadata(importFn) {
   const results = [];
   const nodeModulesDir = path.join(process.cwd(), 'node_modules');
@@ -47,15 +58,13 @@ async function loadNpmPluginMetadata(importFn) {
       const pluginPath = path.join(scopeDir, entry.name);
       try {
         const mod = await importFn(packageName);
-        const rawTools = mod.tools ?? mod.default?.tools ?? [];
-        results.push({
+        results.push(projectPlugin(mod, {
           source: 'npm',
           packageName,
           version: readVersion(pluginPath),
           description: readDescription(pluginPath),
           path: pluginPath,
-          tools: projectTools(rawTools),
-        });
+        }));
       } catch (err) {
         log.warn('npm plugin metadata load failed', { package: packageName, error: err.message });
         results.push({
@@ -65,6 +74,7 @@ async function loadNpmPluginMetadata(importFn) {
           description: readDescription(pluginPath),
           path: pluginPath,
           tools: [],
+          tiles: [],
           loadError: err.message,
         });
       }
@@ -78,15 +88,13 @@ async function loadNpmPluginMetadata(importFn) {
     const pluginPath = path.join(nodeModulesDir, packageName);
     try {
       const mod = await importFn(packageName);
-      const rawTools = mod.tools ?? mod.default?.tools ?? [];
-      results.push({
+      results.push(projectPlugin(mod, {
         source: 'npm',
         packageName,
         version: readVersion(pluginPath),
         description: readDescription(pluginPath),
         path: pluginPath,
-        tools: projectTools(rawTools),
-      });
+      }));
     } catch (err) {
       log.warn('npm plugin metadata load failed', { package: packageName, error: err.message });
       results.push({
@@ -96,6 +104,7 @@ async function loadNpmPluginMetadata(importFn) {
         description: readDescription(pluginPath),
         path: pluginPath,
         tools: [],
+        tiles: [],
         loadError: err.message,
       });
     }
@@ -117,15 +126,13 @@ async function loadLocalPluginMetadata(importFn) {
 
     try {
       const mod = await importFn(entryPath);
-      const rawTools = mod.tools ?? mod.default?.tools ?? [];
-      results.push({
+      results.push(projectPlugin(mod, {
         source: 'local',
         packageName: dir.name,
         version: readVersion(pluginPath),
         description: readDescription(pluginPath),
         path: pluginPath,
-        tools: projectTools(rawTools),
-      });
+      }));
     } catch (err) {
       log.warn('local plugin metadata load failed', { plugin: dir.name, error: err.message });
       results.push({
@@ -135,6 +142,7 @@ async function loadLocalPluginMetadata(importFn) {
         description: readDescription(pluginPath),
         path: pluginPath,
         tools: [],
+        tiles: [],
         loadError: err.message,
       });
     }
@@ -145,7 +153,8 @@ async function loadLocalPluginMetadata(importFn) {
 
 /**
  * Discover plugins and return metadata for each — source (npm/local), package name,
- * version (from package.json), and the tools they provide (name, description, riskLevel).
+ * version (from package.json), tools (name, description, riskLevel), and tile
+ * summaries (id, title, description, refreshSeconds) when a plugin exports `tiles`.
  *
  * Does not modify the loaded tool registry; this is a separate read-only enumeration
  * intended for the web UI's Plugins tile.

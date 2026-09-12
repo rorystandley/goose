@@ -233,6 +233,50 @@ The architecture plugin is the canonical example. It demonstrates:
 
 ---
 
+
+
+## Command-centre tiles
+
+Plugins may optionally export a `tiles` array. Each tile appears on the web command centre Overview and can refresh on its own interval.
+
+```js
+export const tiles = [
+  {
+    id: 'watchlist',                 // kebab-case, unique within the plugin
+    title: 'Crypto',                 // panel title
+    description: 'Watchlist prices', // optional subtitle
+    refreshSeconds: 60,              // optional; clamped to 15–3600
+    async load() {
+      // Return a serialisable payload. Supported kinds:
+      //   { kind: 'table', columns, rows, footer?, emptyMessage?, updatedAt? }
+      //   { kind: 'stats', items: [{ label, value, tone? }], updatedAt? }
+      //   { kind: 'text' | 'markdown', text, updatedAt? }
+      //   { kind: 'error', message, updatedAt? }
+      return {
+        kind: 'table',
+        columns: [
+          { key: 'asset', label: 'Asset' },
+          { key: 'price', label: 'Price', align: 'right' },
+        ],
+        rows: [
+          { tone: 'up', cells: { asset: 'BTC', price: '$70,000' } },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+    },
+  },
+];
+```
+
+Goose discovers tiles the same way it discovers tools (npm `@goose-plugins/*` / `goose-plugin-*`, plus local `plugins/`). Endpoints:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/tiles` | List tile metadata |
+| GET | `/api/tiles/data?plugin=...&tile=...` | Load one tile's live payload |
+
+`load()` runs on the Goose server. Keep it read-only and fast — no user input is passed in v1.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

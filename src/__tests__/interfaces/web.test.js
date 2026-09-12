@@ -26,6 +26,8 @@ const mockGetAllMissionStates   = vi.hoisted(() => vi.fn(() => []));
 const mockLoadMonitors          = vi.hoisted(() => vi.fn(() => []));
 const mockGetMonitorStates      = vi.hoisted(() => vi.fn(() => []));
 const mockLoadPluginMetadata    = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+const mockListPluginTiles       = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+const mockLoadPluginTile        = vi.hoisted(() => vi.fn());
 
 // Mock HTTP server returned by http.createServer
 const mockHttpServer = vi.hoisted(() => ({
@@ -81,6 +83,11 @@ vi.mock('../../monitors/index.js', () => ({
 
 vi.mock('../../plugins/metadata.js', () => ({
   loadPluginMetadata: mockLoadPluginMetadata,
+}));
+
+vi.mock('../../plugins/tiles.js', () => ({
+  listPluginTiles: mockListPluginTiles,
+  loadPluginTile: mockLoadPluginTile,
 }));
 
 vi.mock('../../config.js', () => ({
@@ -774,6 +781,49 @@ describe('handleRequest — GET /api/plugins', () => {
   });
 });
 
+
+
+describe('handleRequest — GET /api/tiles', () => {
+  it('returns tile metadata list', async () => {
+    mockListPluginTiles.mockResolvedValueOnce([
+      { id: 'watchlist', key: '@goose-plugins/crypto/watchlist', packageName: '@goose-plugins/crypto', title: 'Crypto', refreshSeconds: 60 },
+    ]);
+    const req = mockReq('GET', '/api/tiles');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(bodyJson(res).tiles).toHaveLength(1);
+    expect(bodyJson(res).tiles[0].id).toBe('watchlist');
+  });
+
+  it('returns 500 if listing throws', async () => {
+    mockListPluginTiles.mockRejectedValueOnce(new Error('boom'));
+    const req = mockReq('GET', '/api/tiles');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(500, expect.any(Object));
+  });
+});
+
+describe('handleRequest — GET /api/tiles/data', () => {
+  it('returns tile payload', async () => {
+    mockLoadPluginTile.mockResolvedValueOnce({
+      meta: { id: 'watchlist', packageName: '@goose-plugins/crypto' },
+      data: { kind: 'table', columns: [], rows: [] },
+    });
+    const req = mockReq('GET', '/api/tiles/data?plugin=%40goose-plugins%2Fcrypto&tile=watchlist');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(bodyJson(res).data.kind).toBe('table');
+  });
+
+  it('maps tile loader status codes', async () => {
+    mockLoadPluginTile.mockRejectedValueOnce(Object.assign(new Error('missing'), { status: 404 }));
+    const req = mockReq('GET', '/api/tiles/data?plugin=x&tile=y');
+    const res = mockRes();
+    await handleRequest(req, res);
+    expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+  });
+});
 
 describe('dashboard build assets', () => {
   it.each([['/app.js', 'application/javascript'], ['/app.css', 'text/css']])('serves the bundled %s', async (path, contentType) => {
