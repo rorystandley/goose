@@ -106,6 +106,20 @@ function PluginTile({ tile }) {
   );
 }
 
+function TileMeta({ footer, updatedAt }) {
+  if (!footer && !updatedAt) return null;
+  return (
+    <footer className="tile-meta">
+      {footer && <p className="tile-footer">{footer}</p>}
+      {updatedAt && (
+        <time className="tile-updated" dateTime={updatedAt}>
+          {date(updatedAt)}
+        </time>
+      )}
+    </footer>
+  );
+}
+
 function TilePayload({ data }) {
   if (!data || typeof data !== "object") {
     return <p className="tile-muted">No data.</p>;
@@ -117,27 +131,25 @@ function TilePayload({ data }) {
     return (
       <div className="tile-text">
         <pre>{data.text || data.markdown || ""}</pre>
-        {data.updatedAt && (
-          <small className="tile-updated">{date(data.updatedAt)}</small>
-        )}
+        <TileMeta footer={data.footer} updatedAt={data.updatedAt} />
       </div>
     );
   }
   if (data.kind === "stats" && Array.isArray(data.items)) {
     return (
-      <div className="tile-stats">
-        {data.items.map((item) => (
-          <div
-            className={`tile-stat tone-${item.tone || "neutral"}`}
-            key={item.label}
-          >
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </div>
-        ))}
-        {data.updatedAt && (
-          <small className="tile-updated">{date(data.updatedAt)}</small>
-        )}
+      <div className="tile-body">
+        <div className="tile-stats">
+          {data.items.map((item) => (
+            <div
+              className={`tile-stat tone-${item.tone || "neutral"}`}
+              key={item.label}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+        <TileMeta footer={data.footer} updatedAt={data.updatedAt} />
       </div>
     );
   }
@@ -148,46 +160,46 @@ function TilePayload({ data }) {
     return (
       <div className="tile-empty">
         <p>{data.emptyMessage || "Nothing to show yet."}</p>
+        <TileMeta footer={data.footer} updatedAt={data.updatedAt} />
       </div>
     );
   }
   return (
-    <div className="tile-table-wrap">
-      <table className="tile-table">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                className={col.align === "right" ? "right" : undefined}
-              >
-                {col.label || col.key}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr
-              key={index}
-              className={row.tone ? `tone-${row.tone}` : undefined}
-            >
+    <div className="tile-body">
+      <div className="tile-table-wrap">
+        <table className="tile-table">
+          <thead>
+            <tr>
               {columns.map((col) => (
-                <td
+                <th
                   key={col.key}
                   className={col.align === "right" ? "right" : undefined}
                 >
-                  {row.cells?.[col.key] ?? "—"}
-                </td>
+                  {col.label || col.key}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {data.footer && <p className="tile-footer">{data.footer}</p>}
-      {data.updatedAt && (
-        <small className="tile-updated">{date(data.updatedAt)}</small>
-      )}
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr
+                key={index}
+                className={row.tone ? `tone-${row.tone}` : undefined}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={col.align === "right" ? "right" : undefined}
+                  >
+                    {row.cells?.[col.key] ?? "—"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <TileMeta footer={data.footer} updatedAt={data.updatedAt} />
     </div>
   );
 }
