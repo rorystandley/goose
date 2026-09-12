@@ -53,6 +53,10 @@ Read-only list of every monitor in `data/monitors.json` with live status from th
 
 Updates arrive over SSE — no polling from the browser.
 
+### Plugin tiles
+
+Installed plugins may export `tiles` that render on the Overview as live command-centre panels (for example crypto watchlist prices). Tile metadata is listed under Loadout; payloads refresh on each tile’s interval via `/api/tiles/data`.
+
 ### Plugins
 
 Collapsible groups for every loaded plugin:

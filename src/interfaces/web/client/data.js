@@ -95,6 +95,7 @@ const resources = {
   monitors: "monitors",
   audio: "audio",
   plugins: "plugins",
+  tiles: "tiles",
   system: null,
 };
 export function useDashboard(contextId) {

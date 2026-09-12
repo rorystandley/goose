@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@goose-plugins/backup": "file:../goose-plugins/backup",
+    "@goose-plugins/crypto": "file:../goose-plugins/crypto",
     "@goose-plugins/twitter": "file:../goose-plugins/twitter",
     "@slack/bolt": "^3.19.0",
     "cron-parser": "^5.5.0",
